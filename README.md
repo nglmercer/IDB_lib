@@ -19,16 +19,17 @@ Una librería moderna y robusta para gestionar IndexedDB en el navegador, constr
 
 ### NPM/Yarn/Bun
 ```bash
-npm install @your-org/idb-manager
+npm install idb-manager
 # o
-yarn add @your-org/idb-manager
+yarn add idb-manager
 # o
-bun add @your-org/idb-manager
+bun add idb-manager
 ```
 
 ### CDN
+- not implemented yet
 ```html
-<script src="https://cdn.jsdelivr.net/npm/@your-org/idb-manager@latest/dist/idb-manager.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/idb-manager@latest/dist/idb-manager.min.js"></script>
 ```
 
 ## 🛠️ Plan de Desarrollo
@@ -96,7 +97,7 @@ idb-lib/
 ### Configuración e Inicialización
 
 ```typescript
-import { IndexedDBManager, DatabaseConfig } from '@your-org/idb-manager';
+import { IndexedDBManager, DatabaseConfig } from 'idb-manager';
 
 // Configuración de la base de datos
 const dbConfig: DatabaseConfig = {
