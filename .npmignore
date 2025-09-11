@@ -1,0 +1,46 @@
+# Source files
+src/
+tests/
+examples/
+scripts/
+
+# Development files
+.gitignore
+bun.lock
+tsconfig.json
+
+# Build artifacts (keep only dist/)
+*.log
+*.tmp
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Test coverage
+coverage/
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Node modules (should not be in package anyway)
+node_modules/
+
+# Development scripts
+*.test.ts
+*.spec.ts
+
+# Documentation source (keep README.md)
+docs/
+
+# Git files
+.git/
+.github/

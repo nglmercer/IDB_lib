@@ -23,71 +23,92 @@ const baseConfig = {
   external: []
 };
 
-// Build para desarrollo (ESM sin minificar)
-const buildDev = async () => {
-  console.log('🔨 Building development version...');
+// Build para ESM
+const buildESM = async () => {
+  console.log('🔨 Building ESM version...');
   
   const result = await build({
     ...baseConfig,
-    outdir: 'dist',
+    outdir: 'dist/esm',
+    format: 'esm',
     naming: {
-      entry: 'index.js',
-      chunk: '[name]-[hash].js'
+      entry: 'index.js'
     }
   });
 
   if (!result.success) {
-    console.error('❌ Development build failed:', result.logs);
+    console.error('❌ ESM build failed:', result.logs);
     process.exit(1);
   }
 
-  console.log('✅ Development build completed');
+  console.log('✅ ESM build completed');
 };
 
-// Build para producción (ESM minificado)
-const buildProd = async () => {
-  console.log('🔨 Building production version...');
+// Build para CJS
+const buildCJS = async () => {
+  console.log('🔨 Building CJS version...');
   
   const result = await build({
     ...baseConfig,
-    outdir: 'dist',
-    minify: true,
+    outdir: 'dist/cjs',
+    format: 'cjs',
+    target: 'node',
     naming: {
-      entry: 'index.min.js',
-      chunk: '[name]-[hash].min.js'
+      entry: 'index.js'
     }
   });
 
   if (!result.success) {
-    console.error('❌ Production build failed:', result.logs);
+    console.error('❌ CJS build failed:', result.logs);
     process.exit(1);
   }
 
-  console.log('✅ Production build completed');
+  console.log('✅ CJS build completed');
 };
 
-// Build para UMD (compatible con CDN)
-const buildUMD = async () => {
-  console.log('🔨 Building UMD version...');
+// Build para CDN (IIFE)
+const buildCDN = async () => {
+  console.log('🔨 Building CDN version...');
   
-  const result = await build({
+  // Versión de desarrollo
+  const devResult = await build({
     entrypoints: ['src/index.ts'],
     target: 'browser' as const,
     format: 'iife' as const,
-    outdir: 'dist',
-    minify: true,
+    outdir: 'dist/cdn',
+    minify: false,
     sourcemap: 'external' as const,
     naming: {
-      entry: 'index.umd.js'
-    }
+      entry: 'index.js'
+    },
+    globalName: 'IDBManager'
   });
 
-  if (!result.success) {
-    console.error('❌ UMD build failed:', result.logs);
+  if (!devResult.success) {
+    console.error('❌ CDN dev build failed:', devResult.logs);
     process.exit(1);
   }
 
-  console.log('✅ UMD build completed');
+  // Versión minificada
+  const minResult = await build({
+    entrypoints: ['src/index.ts'],
+    target: 'browser' as const,
+    format: 'iife' as const,
+    outdir: 'dist/cdn',
+    minify: true,
+    sourcemap: 'external' as const,
+    naming: {
+      entry: 'index.min.js'
+    },
+    globalName: 'IDBManager'
+  });
+
+  if (!minResult.success) {
+    console.error('❌ CDN min build failed:', minResult.logs);
+    process.exit(1);
+  }
+
+  console.log('✅ CDN build completed');
 };
 
 // Build para tipos TypeScript
@@ -196,23 +217,23 @@ const main = async () => {
   
   try {
     switch (buildType) {
-      case 'dev':
-        await buildDev();
+      case 'esm':
+        await buildESM();
         break;
-      case 'prod':
-        await buildProd();
+      case 'cjs':
+        await buildCJS();
         break;
-      case 'umd':
-        await buildUMD();
+      case 'cdn':
+        await buildCDN();
         break;
       case 'types':
         await buildTypes();
         break;
       case 'all':
       default:
-        await buildDev();
-        await buildProd();
-        await buildUMD();
+        await buildESM();
+        await buildCJS();
+        await buildCDN();
         await buildTypes();
         createBuildInfo();
         copyAssets();
@@ -231,4 +252,4 @@ if (process.argv[1]?.endsWith('build.ts') || process.argv[1]?.endsWith('build.js
   main();
 }
 
-export { buildDev, buildProd, buildUMD, buildTypes, createBuildInfo, copyAssets };
+export { buildESM, buildCJS, buildCDN, buildTypes, createBuildInfo, copyAssets };
