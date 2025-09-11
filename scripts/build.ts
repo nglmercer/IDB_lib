@@ -15,7 +15,7 @@ if (!existsSync('dist')) {
 // Configuración base para todos los builds
 const baseConfig = {
   entrypoints: ['src/index.ts'],
-  target: 'browser',
+  target: 'browser' as const,
   format: 'esm' as const,
   splitting: false,
   sourcemap: 'external' as const,
@@ -72,7 +72,7 @@ const buildUMD = async () => {
   
   const result = await build({
     entrypoints: ['src/index.ts'],
-    target: 'browser',
+    target: 'browser' as const,
     format: 'iife' as const,
     outdir: 'dist',
     minify: true,
@@ -227,7 +227,7 @@ const main = async () => {
 };
 
 // Ejecutar si es llamado directamente
-if (import.meta.main) {
+if (process.argv[1]?.endsWith('build.ts') || process.argv[1]?.endsWith('build.js')) {
   main();
 }
 
