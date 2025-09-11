@@ -1,0 +1,24 @@
+# Bun
+bun.lockb
+
+# Dependencies
+node_modules/
+.env
+
+# Build
+dist/
+build/
+
+# Logs
+*.log
+npm-debug.log*
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db

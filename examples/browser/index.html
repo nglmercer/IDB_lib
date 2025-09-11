@@ -1,0 +1,563 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IndexedDB Manager - Ejemplo de Uso</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            border-radius: 8px;
+            padding: 30px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .section {
+            margin-bottom: 30px;
+            padding: 20px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            background-color: #fafafa;
+        }
+        .section h3 {
+            margin-top: 0;
+            color: #555;
+        }
+        .controls {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+            flex-wrap: wrap;
+        }
+        button {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 4px;
+            background-color: #007acc;
+            color: white;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        button:hover {
+            background-color: #005a9e;
+        }
+        button:disabled {
+            background-color: #ccc;
+            cursor: not-allowed;
+        }
+        input, textarea {
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        .output {
+            background-color: #f8f8f8;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            padding: 15px;
+            margin-top: 15px;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        .status {
+            padding: 10px;
+            border-radius: 4px;
+            margin-bottom: 15px;
+        }
+        .status.success {
+            background-color: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .status.error {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        .grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+        @media (max-width: 768px) {
+            .grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🗄️ IndexedDB Manager - Demo</h1>
+        
+        <div id="status" class="status" style="display: none;"></div>
+        
+        <div class="grid">
+            <!-- Configuración de Base de Datos -->
+            <div class="section">
+                <h3>📊 Configuración de Base de Datos</h3>
+                <div class="form-group">
+                    <label for="dbName">Nombre de la Base de Datos:</label>
+                    <input type="text" id="dbName" value="TestDB" />
+                </div>
+                <div class="form-group">
+                    <label for="storeName">Nombre del Store:</label>
+                    <input type="text" id="storeName" value="users" />
+                </div>
+                <div class="controls">
+                    <button onclick="initializeDB()">Inicializar DB</button>
+                    <button onclick="clearDatabase()">Limpiar DB</button>
+                </div>
+                <div class="output" id="dbOutput"></div>
+            </div>
+            
+            <!-- Operaciones CRUD -->
+            <div class="section">
+                <h3>✏️ Operaciones CRUD</h3>
+                <div class="form-group">
+                    <label for="itemId">ID:</label>
+                    <input type="text" id="itemId" placeholder="ej: user1" />
+                </div>
+                <div class="form-group">
+                    <label for="itemData">Datos (JSON):</label>
+                    <textarea id="itemData" rows="3" placeholder='{"name": "Juan", "email": "juan@email.com"}'></textarea>
+                </div>
+                <div class="controls">
+                    <button onclick="addItem()">Agregar</button>
+                    <button onclick="getItem()">Obtener</button>
+                    <button onclick="updateItem()">Actualizar</button>
+                    <button onclick="deleteItem()">Eliminar</button>
+                </div>
+                <div class="output" id="crudOutput"></div>
+            </div>
+        </div>
+        
+        <div class="grid">
+            <!-- Operaciones en Lote -->
+            <div class="section">
+                <h3>📦 Operaciones en Lote</h3>
+                <div class="controls">
+                    <button onclick="addBatchData()">Agregar Datos de Prueba</button>
+                    <button onclick="getAllItems()">Obtener Todos</button>
+                    <button onclick="searchItems()">Buscar por Nombre</button>
+                </div>
+                <div class="form-group">
+                    <label for="searchTerm">Término de Búsqueda:</label>
+                    <input type="text" id="searchTerm" placeholder="ej: Juan" />
+                </div>
+                <div class="output" id="batchOutput"></div>
+            </div>
+            
+            <!-- Importar/Exportar -->
+            <div class="section">
+                <h3>💾 Importar/Exportar</h3>
+                <div class="controls">
+                    <button onclick="exportData()">Exportar Datos</button>
+                    <button onclick="downloadBackup()">Descargar Backup</button>
+                </div>
+                <div class="form-group">
+                    <label for="importFile">Importar Archivo JSON:</label>
+                    <input type="file" id="importFile" accept=".json" onchange="importData()" />
+                </div>
+                <div class="output" id="importExportOutput"></div>
+            </div>
+        </div>
+        
+        <!-- Eventos y Estadísticas -->
+        <div class="section">
+            <h3>📈 Eventos y Estadísticas</h3>
+            <div class="controls">
+                <button onclick="getStats()">Obtener Estadísticas</button>
+                <button onclick="clearEvents()">Limpiar Eventos</button>
+            </div>
+            <div class="output" id="eventsOutput"></div>
+        </div>
+    </div>
+    
+    <!-- Cargar la librería desde CDN o local -->
+    <script src="../../dist/idb-manager.umd.js"></script>
+    
+    <script>
+        let dbManager = null;
+        
+        // Función para mostrar mensajes de estado
+        function showStatus(message, type = 'success') {
+            const statusEl = document.getElementById('status');
+            statusEl.textContent = message;
+            statusEl.className = `status ${type}`;
+            statusEl.style.display = 'block';
+            setTimeout(() => {
+                statusEl.style.display = 'none';
+            }, 3000);
+        }
+        
+        // Función para agregar output a una sección
+        function addOutput(elementId, content) {
+            const outputEl = document.getElementById(elementId);
+            const timestamp = new Date().toLocaleTimeString();
+            outputEl.innerHTML += `[${timestamp}] ${content}\n`;
+            outputEl.scrollTop = outputEl.scrollHeight;
+        }
+        
+        // Inicializar base de datos
+        async function initializeDB() {
+            try {
+                const dbName = document.getElementById('dbName').value;
+                const storeName = document.getElementById('storeName').value;
+                
+                const config = {
+                    name: dbName,
+                    version: 1,
+                    stores: [{
+                        name: storeName,
+                        keyPath: 'id',
+                        autoIncrement: false,
+                        indexes: [
+                            { name: 'name', keyPath: 'name', unique: false },
+                            { name: 'email', keyPath: 'email', unique: true }
+                        ]
+                    }]
+                };
+                
+                dbManager = new IndexedDBManager(config);
+                
+                // Configurar eventos
+                dbManager.on('ready', () => {
+                    addOutput('eventsOutput', '✅ Base de datos lista');
+                });
+                
+                dbManager.on('error', (error) => {
+                    addOutput('eventsOutput', `❌ Error: ${error.message}`);
+                });
+                
+                dbManager.on('add', (data) => {
+                    addOutput('eventsOutput', `➕ Agregado: ${JSON.stringify(data)}`);
+                });
+                
+                dbManager.on('update', (data) => {
+                    addOutput('eventsOutput', `✏️ Actualizado: ${JSON.stringify(data)}`);
+                });
+                
+                dbManager.on('delete', (id) => {
+                    addOutput('eventsOutput', `🗑️ Eliminado: ${id}`);
+                });
+                
+                await dbManager.init();
+                addOutput('dbOutput', `Base de datos '${dbName}' inicializada correctamente`);
+                showStatus('Base de datos inicializada correctamente');
+                
+            } catch (error) {
+                addOutput('dbOutput', `Error: ${error.message}`);
+                showStatus(`Error: ${error.message}`, 'error');
+            }
+        }
+        
+        // Limpiar base de datos
+        async function clearDatabase() {
+            if (!dbManager) {
+                showStatus('Primero inicializa la base de datos', 'error');
+                return;
+            }
+            
+            try {
+                await dbManager.clear();
+                addOutput('dbOutput', 'Base de datos limpiada');
+                showStatus('Base de datos limpiada correctamente');
+            } catch (error) {
+                addOutput('dbOutput', `Error: ${error.message}`);
+                showStatus(`Error: ${error.message}`, 'error');
+            }
+        }
+        
+        // Agregar item
+        async function addItem() {
+            if (!dbManager) {
+                showStatus('Primero inicializa la base de datos', 'error');
+                return;
+            }
+            
+            try {
+                const id = document.getElementById('itemId').value;
+                const dataStr = document.getElementById('itemData').value;
+                
+                if (!id || !dataStr) {
+                    showStatus('Por favor completa ID y datos', 'error');
+                    return;
+                }
+                
+                const data = JSON.parse(dataStr);
+                data.id = id;
+                
+                await dbManager.add(data);
+                addOutput('crudOutput', `Agregado: ${JSON.stringify(data)}`);
+                showStatus('Item agregado correctamente');
+                
+            } catch (error) {
+                addOutput('crudOutput', `Error: ${error.message}`);
+                showStatus(`Error: ${error.message}`, 'error');
+            }
+        }
+        
+        // Obtener item
+        async function getItem() {
+            if (!dbManager) {
+                showStatus('Primero inicializa la base de datos', 'error');
+                return;
+            }
+            
+            try {
+                const id = document.getElementById('itemId').value;
+                
+                if (!id) {
+                    showStatus('Por favor ingresa un ID', 'error');
+                    return;
+                }
+                
+                const item = await dbManager.get(id);
+                addOutput('crudOutput', `Obtenido: ${JSON.stringify(item, null, 2)}`);
+                
+                if (item) {
+                    document.getElementById('itemData').value = JSON.stringify(item, null, 2);
+                }
+                
+            } catch (error) {
+                addOutput('crudOutput', `Error: ${error.message}`);
+                showStatus(`Error: ${error.message}`, 'error');
+            }
+        }
+        
+        // Actualizar item
+        async function updateItem() {
+            if (!dbManager) {
+                showStatus('Primero inicializa la base de datos', 'error');
+                return;
+            }
+            
+            try {
+                const id = document.getElementById('itemId').value;
+                const dataStr = document.getElementById('itemData').value;
+                
+                if (!id || !dataStr) {
+                    showStatus('Por favor completa ID y datos', 'error');
+                    return;
+                }
+                
+                const data = JSON.parse(dataStr);
+                data.id = id;
+                
+                await dbManager.update(data);
+                addOutput('crudOutput', `Actualizado: ${JSON.stringify(data)}`);
+                showStatus('Item actualizado correctamente');
+                
+            } catch (error) {
+                addOutput('crudOutput', `Error: ${error.message}`);
+                showStatus(`Error: ${error.message}`, 'error');
+            }
+        }
+        
+        // Eliminar item
+        async function deleteItem() {
+            if (!dbManager) {
+                showStatus('Primero inicializa la base de datos', 'error');
+                return;
+            }
+            
+            try {
+                const id = document.getElementById('itemId').value;
+                
+                if (!id) {
+                    showStatus('Por favor ingresa un ID', 'error');
+                    return;
+                }
+                
+                await dbManager.delete(id);
+                addOutput('crudOutput', `Eliminado: ${id}`);
+                showStatus('Item eliminado correctamente');
+                
+            } catch (error) {
+                addOutput('crudOutput', `Error: ${error.message}`);
+                showStatus(`Error: ${error.message}`, 'error');
+            }
+        }
+        
+        // Agregar datos de prueba en lote
+        async function addBatchData() {
+            if (!dbManager) {
+                showStatus('Primero inicializa la base de datos', 'error');
+                return;
+            }
+            
+            try {
+                const testData = [
+                    { id: 'user1', name: 'Juan Pérez', email: 'juan@email.com', age: 30 },
+                    { id: 'user2', name: 'María García', email: 'maria@email.com', age: 25 },
+                    { id: 'user3', name: 'Carlos López', email: 'carlos@email.com', age: 35 },
+                    { id: 'user4', name: 'Ana Martínez', email: 'ana@email.com', age: 28 },
+                    { id: 'user5', name: 'Luis Rodríguez', email: 'luis@email.com', age: 32 }
+                ];
+                
+                await dbManager.addBatch(testData);
+                addOutput('batchOutput', `Agregados ${testData.length} items en lote`);
+                showStatus('Datos de prueba agregados correctamente');
+                
+            } catch (error) {
+                addOutput('batchOutput', `Error: ${error.message}`);
+                showStatus(`Error: ${error.message}`, 'error');
+            }
+        }
+        
+        // Obtener todos los items
+        async function getAllItems() {
+            if (!dbManager) {
+                showStatus('Primero inicializa la base de datos', 'error');
+                return;
+            }
+            
+            try {
+                const items = await dbManager.getAll();
+                addOutput('batchOutput', `Total de items: ${items.length}`);
+                addOutput('batchOutput', JSON.stringify(items, null, 2));
+                
+            } catch (error) {
+                addOutput('batchOutput', `Error: ${error.message}`);
+                showStatus(`Error: ${error.message}`, 'error');
+            }
+        }
+        
+        // Buscar items
+        async function searchItems() {
+            if (!dbManager) {
+                showStatus('Primero inicializa la base de datos', 'error');
+                return;
+            }
+            
+            try {
+                const searchTerm = document.getElementById('searchTerm').value;
+                
+                if (!searchTerm) {
+                    showStatus('Por favor ingresa un término de búsqueda', 'error');
+                    return;
+                }
+                
+                const results = await dbManager.search('name', searchTerm);
+                addOutput('batchOutput', `Resultados de búsqueda para '${searchTerm}': ${results.length} items`);
+                addOutput('batchOutput', JSON.stringify(results, null, 2));
+                
+            } catch (error) {
+                addOutput('batchOutput', `Error: ${error.message}`);
+                showStatus(`Error: ${error.message}`, 'error');
+            }
+        }
+        
+        // Exportar datos
+        async function exportData() {
+            if (!dbManager) {
+                showStatus('Primero inicializa la base de datos', 'error');
+                return;
+            }
+            
+            try {
+                const exportedData = await dbManager.exportData();
+                addOutput('importExportOutput', `Datos exportados: ${JSON.stringify(exportedData, null, 2)}`);
+                showStatus('Datos exportados correctamente');
+                
+            } catch (error) {
+                addOutput('importExportOutput', `Error: ${error.message}`);
+                showStatus(`Error: ${error.message}`, 'error');
+            }
+        }
+        
+        // Descargar backup
+        async function downloadBackup() {
+            if (!dbManager) {
+                showStatus('Primero inicializa la base de datos', 'error');
+                return;
+            }
+            
+            try {
+                await dbManager.downloadBackup();
+                addOutput('importExportOutput', 'Backup descargado');
+                showStatus('Backup descargado correctamente');
+                
+            } catch (error) {
+                addOutput('importExportOutput', `Error: ${error.message}`);
+                showStatus(`Error: ${error.message}`, 'error');
+            }
+        }
+        
+        // Importar datos
+        async function importData() {
+            if (!dbManager) {
+                showStatus('Primero inicializa la base de datos', 'error');
+                return;
+            }
+            
+            try {
+                const fileInput = document.getElementById('importFile');
+                const file = fileInput.files[0];
+                
+                if (!file) {
+                    return;
+                }
+                
+                await dbManager.importData(file);
+                addOutput('importExportOutput', `Datos importados desde: ${file.name}`);
+                showStatus('Datos importados correctamente');
+                
+            } catch (error) {
+                addOutput('importExportOutput', `Error: ${error.message}`);
+                showStatus(`Error: ${error.message}`, 'error');
+            }
+        }
+        
+        // Obtener estadísticas
+        async function getStats() {
+            if (!dbManager) {
+                showStatus('Primero inicializa la base de datos', 'error');
+                return;
+            }
+            
+            try {
+                const stats = await dbManager.getStats();
+                addOutput('eventsOutput', `Estadísticas: ${JSON.stringify(stats, null, 2)}`);
+                
+            } catch (error) {
+                addOutput('eventsOutput', `Error: ${error.message}`);
+                showStatus(`Error: ${error.message}`, 'error');
+            }
+        }
+        
+        // Limpiar eventos
+        function clearEvents() {
+            document.getElementById('eventsOutput').innerHTML = '';
+        }
+        
+        // Inicializar automáticamente al cargar la página
+        window.addEventListener('load', () => {
+            addOutput('eventsOutput', '🚀 Demo cargado. Haz clic en "Inicializar DB" para comenzar.');
+        });
+    </script>
+</body>
+</html>

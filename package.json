@@ -1,0 +1,77 @@
+{
+  "name": "@idb-lib/manager",
+  "version": "1.0.0",
+  "description": "Una librería moderna y robusta para gestionar IndexedDB en el navegador",
+  "main": "dist/cjs/index.js",
+  "module": "dist/esm/index.js",
+  "types": "dist/types/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/esm/index.js",
+      "require": "./dist/cjs/index.js",
+      "types": "./dist/types/index.d.ts"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "dev": "bun run build:dev && bun run serve",
+    "build": "bun run clean && bun run build:types && bun run build:esm && bun run build:cjs && bun run build:cdn",
+    "build:dev": "bun run clean && bun run build:esm",
+    "build:types": "tsc --emitDeclarationOnly --outDir dist/types",
+    "build:esm": "bun build src/index.ts --outdir dist/esm --format esm --target browser --sourcemap",
+    "build:cjs": "bun build src/index.ts --outdir dist/cjs --format cjs --target node --sourcemap",
+    "build:cdn": "bun run build:cdn:dev && bun run build:cdn:min",
+    "build:cdn:dev": "bun build src/index.ts --outdir dist/cdn --format iife --target browser",
+    "build:cdn:min": "bun build src/index.ts --outdir dist/cdn --format iife --target browser --minify --sourcemap",
+    "test": "bun test",
+    "test:watch": "bun test --watch",
+    "test:coverage": "bun test --coverage",
+    "clean": "rm -rf dist",
+    "serve": "bun run --hot examples/server.ts",
+    "lint": "eslint src/**/*.ts",
+    "format": "prettier --write src/**/*.ts",
+    "prepublishOnly": "bun run build && bun run test"
+  },
+  "keywords": [
+    "indexeddb",
+    "database",
+    "browser",
+    "typescript",
+    "bun",
+    "storage",
+    "offline",
+    "web"
+  ],
+  "author": "Tu Nombre <tu@email.com>",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/tu-usuario/idb-lib.git"
+  },
+  "bugs": {
+    "url": "https://github.com/tu-usuario/idb-lib/issues"
+  },
+  "homepage": "https://github.com/tu-usuario/idb-lib#readme",
+  "devDependencies": {
+    "@types/bun": "latest",
+    "typescript": "^5.0.0",
+    "eslint": "^8.0.0",
+    "@typescript-eslint/eslint-plugin": "^6.0.0",
+    "@typescript-eslint/parser": "^6.0.0",
+    "prettier": "^3.0.0"
+  },
+  "peerDependencies": {},
+  "engines": {
+    "node": ">=18.0.0",
+    "bun": ">=1.0.0"
+  },
+  "browserslist": [
+    "defaults",
+    "not IE 11",
+    "not op_mini all"
+  ]
+}
