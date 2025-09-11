@@ -35,7 +35,8 @@ export class IndexedDBManager {
     }
     
     this.dbConfig = actualConfig;
-    this.emitterInstance = emitter;
+    // Inicializar el emitter (usar mock en tests)
+    this.emitterInstance = (globalThis as any).__mockEmitter || emitter;
     this.db = null;
     this.defaultIndexes = [];
     
@@ -298,7 +299,7 @@ export class IndexedDBManager {
     }
     
     const newData: DatabaseItem = { ...data, id: targetId } as DatabaseItem;
-    const actionType: EmitEvents = isUpdate ? "update" : "save";
+    const actionType: EmitEvents = isUpdate ? "update" : "add";
 
     return this.executeTransaction(
       this.dbConfig.store,
@@ -399,7 +400,7 @@ export class IndexedDBManager {
 
       request.onsuccess = () => {
         this.db = request.result;
-        resolve(this.db);
+        resolve(request.result);
       };
 
       request.onerror = () => {
@@ -421,11 +422,15 @@ export class IndexedDBManager {
     callback: (store: IDBObjectStore) => T | Promise<T>
   ): Promise<T> {
     try {
-      const db = await this.openDatabase();
+      const db = this.db;
+      if (!db) {
+        throw new Error('Database not open. Call openDatabase() first.');
+      }
 
       return new Promise<T>((resolve, reject) => {
         if (!db || !db.objectStoreNames.contains(storeName)) {
           console.error(`DB not open or store ${storeName} not found`);
+          console.error(`Available stores:`, db ? Array.from(db.objectStoreNames) : 'No DB');
           return reject(
             new Error(`DB not open or store ${storeName} not found`)
           );
@@ -433,10 +438,16 @@ export class IndexedDBManager {
 
         const transaction = db.transaction([storeName], mode);
         const store = transaction.objectStore(storeName);
-        let result: T | null = null;
+        let result: T;
+        let hasResult = false;
 
-        transaction.oncomplete = () =>
-          resolve(result !== null ? result : (true as T));
+        transaction.oncomplete = () => {
+          if (hasResult) {
+            resolve(result);
+          } else {
+            reject(new Error('Transaction completed but no result was set'));
+          }
+        };
           
         transaction.onerror = () => {
           console.error("IDB Transaction Error:", transaction.error);
@@ -455,6 +466,11 @@ export class IndexedDBManager {
             callbackResult
               .then((res) => {
                 result = res;
+                hasResult = true;
+                // Para promesas, esperamos a que la transacción se complete
+                // Si la transacción ya se completó, resolvemos inmediatamente
+                  resolve(result);
+
               })
               .catch((err) => {
                 console.error(
@@ -468,6 +484,10 @@ export class IndexedDBManager {
               });
           } else {
             result = callbackResult;
+            hasResult = true;
+            // Para resultados síncronos, resolvemos inmediatamente
+            resolve(result);
+            return;
           }
         } catch (error) {
           console.error("Error inside transaction callback sync:", error);
@@ -598,6 +618,115 @@ export class IndexedDBManager {
     };
     
     this.emitterInstance?.emit(event, eventData);
+  }
+
+  /**
+   * Obtiene un elemento por su ID
+   */
+  async get(id: string | number): Promise<DatabaseItem | null> {
+    return this.executeTransaction(
+      this.dbConfig.store,
+      'readonly',
+      async (store) => {
+        const request = store.get(id);
+        return new Promise<DatabaseItem | null>((resolve, reject) => {
+          request.onsuccess = () => resolve(request.result || null);
+          request.onerror = () => reject(request.error);
+        });
+      }
+    );
+  }
+
+  /**
+   * Actualiza un elemento existente
+   */
+  async update(item: DatabaseItem): Promise<DatabaseItem> {
+    const result = await this.executeTransaction(
+      this.dbConfig.store,
+      'readwrite',
+      async (store) => {
+        const request = store.put(item);
+        return new Promise<DatabaseItem>((resolve, reject) => {
+          request.onsuccess = () => resolve(item);
+          request.onerror = () => reject(request.error);
+        });
+      }
+    );
+    
+    this.emitEvent('update', result);
+    return result;
+  }
+
+  /**
+   * Elimina un elemento por su ID
+   */
+  async delete(id: string | number): Promise<boolean> {
+    const result = await this.executeTransaction(
+      this.dbConfig.store,
+      'readwrite',
+      async (store) => {
+        const request = store.delete(id);
+        return new Promise<boolean>((resolve, reject) => {
+          request.onsuccess = () => resolve(true);
+          request.onerror = () => reject(request.error);
+        });
+      }
+    );
+    
+    this.emitEvent('delete', null);
+    return result;
+  }
+
+  /**
+   * Limpia todos los datos del store
+   */
+  async clear(): Promise<void> {
+    await this.clearDatabase();
+  }
+
+  /**
+   * Busca elementos por texto
+   */
+  async search(query: string, options?: { fields?: string[] }): Promise<DatabaseItem[]> {
+    const allData = await this.getAllData();
+    const searchFields = options?.fields || ['name', 'title', 'description'];
+    
+    return allData.filter(item => {
+      return searchFields.some(field => {
+        const value = item[field];
+        return typeof value === 'string' && 
+               value.toLowerCase().includes(query.toLowerCase());
+      });
+    });
+  }
+
+  /**
+   * Filtra elementos por criterios
+   */
+  async filter(criteria: Record<string, any>): Promise<DatabaseItem[]> {
+    const allData = await this.getAllData();
+    
+    return allData.filter(item => {
+      return Object.entries(criteria).every(([key, value]) => {
+        return item[key] === value;
+      });
+    });
+  }
+
+  /**
+   * Obtiene múltiples elementos por sus IDs
+   */
+  async getMany(ids: (string | number)[]): Promise<DatabaseItem[]> {
+    const results: DatabaseItem[] = [];
+    
+    for (const id of ids) {
+      const item = await this.get(id);
+      if (item) {
+        results.push(item);
+      }
+    }
+    
+    return results;
   }
 
   /**

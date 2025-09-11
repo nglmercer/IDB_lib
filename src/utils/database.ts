@@ -60,6 +60,12 @@ export async function importDataToDatabase(
   data: DatabaseItem[],
   options: ImportOptions = {}
 ): Promise<boolean> {
+  // Validate database configuration first
+  if (!databaseConfig || !databaseConfig.name || !databaseConfig.version || !databaseConfig.store) {
+    console.error("Invalid database configuration:", databaseConfig);
+    return false;
+  }
+
   const { clearBefore = true, validate = true, transform } = options;
 
   return new Promise<boolean>((resolve) => {

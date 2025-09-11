@@ -73,7 +73,7 @@ export interface OperationStatusDetail {
 /**
  * Eventos disponibles del emitter
  */
-export type EmitEvents = "update" | "save" | "delete" | "clear" | "export" | "import";
+export type EmitEvents = "add" | "update" | "save" | "delete" | "clear" | "export" | "import";
 
 /**
  * Lista de eventos disponibles

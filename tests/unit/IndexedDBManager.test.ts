@@ -1,13 +1,50 @@
 import { describe, it, expect, beforeEach } from 'bun:test';
+import '../setup.js'; // Importar setup para configurar mocks
 import { IndexedDBManager } from '../../src/core/IndexedDBManager.js';
 import type { DatabaseConfig } from '../../src/types/index.js';
-import { waitForAsync, createTestData } from '../setup.js';
+import { waitForAsync, createTestData, MockIDBFactory } from '../setup.js';
+
+// Mock the emitter module
+const mockEmitter = {
+  on: (event: string, callback: Function) => {
+    if (!mockEmitter._events) mockEmitter._events = {};
+    if (!mockEmitter._events[event]) mockEmitter._events[event] = [];
+    mockEmitter._events[event].push(callback);
+  },
+  off: (event: string, callback?: Function) => {
+    if (!mockEmitter._events || !mockEmitter._events[event]) return;
+    if (callback) {
+      mockEmitter._events[event] = mockEmitter._events[event].filter((cb: Function) => cb !== callback);
+    } else {
+      delete mockEmitter._events[event];
+    }
+  },
+  emit: (event: string, data?: any) => {
+    if (!mockEmitter._events || !mockEmitter._events[event]) return;
+    mockEmitter._events[event].forEach((callback: Function) => {
+      try {
+        callback(data);
+      } catch (error) {
+        console.error(`Error in event listener for '${event}':`, error);
+      }
+    });
+  },
+  _events: {} as { [key: string]: Function[] }
+};
+
+// Override the global emitter
+(globalThis as any).__mockEmitter = mockEmitter;
 
 describe('IndexedDBManager', () => {
   let manager: IndexedDBManager;
   let testConfig: DatabaseConfig;
 
   beforeEach(() => {
+    // Asegurar que los mocks estén configurados
+    if (!(globalThis as any).indexedDB) {
+      (globalThis as any).indexedDB = new MockIDBFactory();
+    }
+    
     testConfig = {
       name: 'TestDB',
       version: 1,
@@ -16,8 +53,8 @@ describe('IndexedDBManager', () => {
     
     manager = new IndexedDBManager({
       defaultDatabase: testConfig,
-      debug: false
-    });
+      
+    },{debug: false});
   });
 
   describe('Inicialización', () => {
@@ -44,14 +81,18 @@ describe('IndexedDBManager', () => {
   describe('Operaciones CRUD', () => {
     beforeEach(async () => {
       await manager.setDatabase(testConfig);
-      await waitForAsync();
     });
 
     it('debería agregar un elemento', async () => {
       const testItem = { id: 1, name: 'Test Item', value: 100 };
       
-      const result = await manager.add(testItem);
-      expect(result).toBe(true);
+      try {
+        const result = await manager.add(testItem);
+        expect(result).toEqual(testItem);
+      } catch (error) {
+        console.error('Error en test add:', error);
+        throw error;
+      }
     });
 
     it('debería obtener un elemento por ID', async () => {
@@ -72,7 +113,7 @@ describe('IndexedDBManager', () => {
       await waitForAsync();
       
       const result = await manager.update(updatedItem);
-      expect(result).toBe(true);
+      expect(result).toEqual(updatedItem);
       
       const retrieved = await manager.get(1);
       expect(retrieved).toEqual(updatedItem);
@@ -88,7 +129,7 @@ describe('IndexedDBManager', () => {
       expect(result).toBe(true);
       
       const retrieved = await manager.get(1);
-      expect(retrieved).toBeUndefined();
+      expect(retrieved).toBeNull();
     });
 
     it('debería obtener todos los elementos', async () => {
@@ -124,8 +165,8 @@ describe('IndexedDBManager', () => {
       }
       await waitForAsync();
       
-      const result = await manager.clear();
-      expect(result).toBe(true);
+      await manager.clear();
+      // clear() returns void, so no result to check
       
       const count = await manager.count();
       expect(count).toBe(0);
@@ -218,11 +259,12 @@ describe('IndexedDBManager', () => {
     });
 
     it('debería buscar con opciones de consulta', async () => {
-      const results = await manager.search('', {
+      const searchResult = await manager.searchData({}, {
         limit: 2,
         offset: 1
       });
-      expect(results).toHaveLength(2);
+      expect(searchResult.items).toHaveLength(2);
+      expect(searchResult.total).toBe(5);
     });
   });
 
@@ -241,12 +283,16 @@ describe('IndexedDBManager', () => {
         eventData = data;
       });
       
+      // Ensure database is opened
+      await manager.openDatabase();
+      
       const testItem = { id: 1, name: 'Test Item', value: 100 };
       await manager.add(testItem);
-      await waitForAsync();
+      await waitForAsync(100); // Increase wait time
       
       expect(eventFired).toBe(true);
-      expect(eventData).toEqual(testItem);
+      expect(eventData.data).toEqual(testItem);
+      expect(eventData.config).toEqual(testConfig);
     });
 
     it('debería emitir evento al actualizar elemento', async () => {
@@ -302,24 +348,21 @@ describe('IndexedDBManager', () => {
   });
 
   describe('Manejo de errores', () => {
-    it('debería manejar errores de configuración inválida', () => {
-      expect(() => {
-        manager.setDatabase(null as any);
-      }).toThrow();
+    it('debería manejar errores de configuración inválida', async () => {
+      await expect(manager.setDatabase(null as any)).rejects.toThrow('Invalid database configuration provided');
     });
 
     it('debería manejar errores al agregar elementos inválidos', async () => {
       await manager.setDatabase(testConfig);
       
-      const result = await manager.add(null as any);
-      expect(result).toBe(false);
+      await expect(manager.add(null as any)).rejects.toThrow('Invalid data: must be an object.');
     });
 
     it('debería manejar errores al obtener elementos inexistentes', async () => {
       await manager.setDatabase(testConfig);
       
       const result = await manager.get(999);
-      expect(result).toBeUndefined();
+      expect(result).toBeNull();
     });
   });
 });

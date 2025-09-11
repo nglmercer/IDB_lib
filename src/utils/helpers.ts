@@ -261,7 +261,8 @@ export function convertToCSV(data: DatabaseItem[]): string {
     return '';
   }
   
-  // Recopilar todas las propiedades únicas de todos los objetos
+  // Usar el orden de propiedades del primer objeto, luego agregar las demás ordenadas
+  const firstItemHeaders = data[0] && typeof data[0] === 'object' ? Object.keys(data[0]) : [];
   const allHeaders = new Set<string>();
   data.forEach(item => {
     if (item && typeof item === 'object') {
@@ -269,7 +270,9 @@ export function convertToCSV(data: DatabaseItem[]): string {
     }
   });
   
-  const headers = Array.from(allHeaders).sort();
+  // Mantener el orden del primer objeto, luego agregar las propiedades restantes ordenadas
+  const remainingHeaders = Array.from(allHeaders).filter(h => !firstItemHeaders.includes(h)).sort();
+  const headers = [...firstItemHeaders, ...remainingHeaders];
   const csvHeaders = headers.join(',');
   
   const csvRows = data.map(item => {

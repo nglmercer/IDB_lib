@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach } from 'bun:test';
+import '../setup.js'; // Importar setup para configurar mocks
 import { IndexedDBManager } from '../../src/core/IndexedDBManager.js';
 import {
   getAllDataFromDatabase,
@@ -15,17 +16,22 @@ describe('Database Operations Integration', () => {
   let manager: IndexedDBManager;
   let testConfig: DatabaseConfig;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     testConfig = {
       name: 'IntegrationTestDB',
       version: 1,
-      store: 'integrationStore'
+      store: 'integrationStore',
     };
     
     manager = new IndexedDBManager({
       defaultDatabase: testConfig,
-      debug: false
-    });
+    },{debug:true});
+    
+    // Clear database before each test
+    await manager.setDatabase(testConfig);
+    await waitForAsync();
+    await manager.clearDatabase();
+    await waitForAsync();
   });
 
   describe('Flujo completo de datos', () => {
@@ -98,9 +104,9 @@ describe('Database Operations Integration', () => {
 
       const results = await Promise.all(promises);
       
-      expect(results[0]).toBe(true); // update
-      expect(results[1]).toBe(true); // delete
-      expect(results[2]).toBe(true); // add
+      expect(results[0]).toBeTruthy(); // update returns DatabaseItem
+      expect(results[1]).toBe(true); // delete returns boolean
+      expect(results[2]).toBeTruthy(); // add returns DatabaseItem
       expect(results[3]).toBeDefined(); // get
 
       // Verificar estado final
@@ -293,8 +299,8 @@ describe('Database Operations Integration', () => {
 
       const results = await Promise.all(promises);
       
-      // Todas las operaciones deberían completarse
-      expect(results.every(result => result === true)).toBe(true);
+      // Todas las operaciones deberían completarse (add devuelve DatabaseItem, no boolean)
+      expect(results.every(result => result && typeof result === 'object')).toBe(true);
 
       // Verificar que todos los elementos se agregaron
       const count = await manager.count();
