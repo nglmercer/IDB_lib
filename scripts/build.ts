@@ -118,11 +118,8 @@ const buildTypes = async () => {
   try {
     // Ejecutar tsc para generar archivos .d.ts
     const proc = Bun.spawn([
-      'bun', 'tsc', 
-      '--declaration', 
-      '--emitDeclarationOnly', 
-      '--outDir', 'dist/types',
-      '--declarationMap'
+      'npx', 'tsc', 
+      '--project', 'tsconfig.build.json'
     ], {
       stdio: ['inherit', 'inherit', 'inherit']
     });
@@ -177,11 +174,11 @@ const copyAssets = () => {
     main: 'index.js',
     module: 'index.js',
     types: 'types/index.d.ts',
-    browser: 'index.umd.js',
+    browser: 'cdn/index.js',
     exports: {
       '.': {
-        import: './index.js',
-        require: './index.umd.js',
+        import: './esm/index.js',
+        require: './cjs/index.js',
         types: './types/index.d.ts'
       }
     },

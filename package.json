@@ -1,10 +1,11 @@
 {
   "name": "idb-manager",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Una librería moderna y robusta para gestionar IndexedDB en el navegador",
   "main": "dist/cjs/index.js",
   "module": "dist/esm/index.js",
   "types": "dist/types/index.d.ts",
+  "browser": "dist/cdn/index.js",
   "exports": {
     ".": {
       "import": "./dist/esm/index.js",
@@ -21,7 +22,7 @@
     "dev": "bun run build:dev && bun run serve",
     "build": "bun run clean && bun run build:types && bun run build:esm && bun run build:cjs && bun run build:cdn",
     "build:dev": "bun run clean && bun run build:esm",
-    "build:types": "tsc --emitDeclarationOnly --outDir dist/types",
+    "build:types": "tsc --project tsconfig.build.json",
     "build:esm": "bun build src/index.ts --outdir dist/esm --format esm --target browser --sourcemap",
     "build:cjs": "bun build src/index.ts --outdir dist/cjs --format cjs --target node --sourcemap",
     "build:cdn": "bun run build:cdn:dev && bun run build:cdn:min",
