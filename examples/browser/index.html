@@ -197,8 +197,950 @@
     </div>
     
     <!-- Cargar la librería desde CDN o local -->
-    <script src="../../dist/idb-manager.umd.js"></script>
-    
+    <!-- <script src="../../dist/cdn/index.js"></script> -->
+    <script>
+
+var __defProp = Object.defineProperty;
+var __getOwnPropNames = Object.getOwnPropertyNames;
+var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
+var __hasOwnProp = Object.prototype.hasOwnProperty;
+var __moduleCache = /* @__PURE__ */ new WeakMap;
+var __toCommonJS = (from) => {
+  var entry = __moduleCache.get(from), desc;
+  if (entry)
+    return entry;
+  entry = __defProp({}, "__esModule", { value: true });
+  if (from && typeof from === "object" || typeof from === "function")
+    __getOwnPropNames(from).map((key) => !__hasOwnProp.call(entry, key) && __defProp(entry, key, {
+      get: () => from[key],
+      enumerable: !(desc = __getOwnPropDesc(from, key)) || desc.enumerable
+    }));
+  __moduleCache.set(from, entry);
+  return entry;
+};
+var __export = (target, all) => {
+  for (var name in all)
+    __defProp(target, name, {
+      get: all[name],
+      enumerable: true,
+      configurable: true,
+      set: (newValue) => all[name] = () => newValue
+    });
+};
+
+// src/index.ts
+var exports_src = {};
+__export(exports_src, {
+  version: () => version,
+  validateDatabaseConfig: () => validateDatabaseConfig,
+  throttle: () => throttle,
+  restoreFromBackup: () => restoreFromBackup,
+  readJSONFile: () => readJSONFile,
+  normalizeId: () => normalizeId,
+  isValidId: () => isValidId,
+  info: () => info,
+  importDataToDatabase: () => importDataToDatabase,
+  importDataFromFile: () => importDataFromFile,
+  getAllDataFromDatabase: () => getAllDataFromDatabase,
+  generateNextId: () => generateNextId,
+  findMissingIds: () => findMissingIds,
+  exportDataFromDatabase: () => exportDataFromDatabase,
+  downloadJSON: () => downloadJSON,
+  defaultManager: () => defaultManager,
+  default: () => src_default,
+  debounce: () => debounce,
+  createTimestamp: () => createTimestamp,
+  createManager: () => createManager,
+  createBackup: () => createBackup,
+  convertToCSV: () => convertToCSV,
+  IndexedDBManager: () => IndexedDBManager,
+  Emitter: () => Emitter
+});
+
+// src/core/Emitter.ts
+class Emitter {
+  events = {};
+  on(event, callback) {
+    if (!this.events[event]) {
+      this.events[event] = [];
+    }
+    this.events[event].push(callback);
+  }
+  once(event, callback) {
+    const onceCallback = (data) => {
+      callback(data);
+      this.off(event, onceCallback);
+    };
+    this.on(event, onceCallback);
+  }
+  off(event, callback) {
+    if (!this.events[event])
+      return;
+    if (callback) {
+      const index = this.events[event].indexOf(callback);
+      if (index > -1) {
+        this.events[event].splice(index, 1);
+      }
+    } else {
+      delete this.events[event];
+    }
+  }
+  emit(event, data) {
+    if (!this.events[event])
+      return;
+    const callbacks = [...this.events[event]];
+    callbacks.forEach((callback) => {
+      try {
+        callback(data);
+      } catch (error) {
+        console.error(`Error in event listener for '${event}':`, error);
+      }
+    });
+  }
+  getEvents() {
+    return Object.keys(this.events);
+  }
+  listenerCount(event) {
+    return this.events[event]?.length || 0;
+  }
+  removeAllListeners() {
+    this.events = {};
+  }
+  hasListeners(event) {
+    return this.listenerCount(event) > 0;
+  }
+}
+var emitter = new Emitter;
+
+// src/utils/helpers.ts
+function normalizeId(id) {
+  if (typeof id === "string") {
+    const trimmedId = id.trim();
+    if (trimmedId === "")
+      return id;
+    const numValue = Number(trimmedId);
+    if (!isNaN(numValue)) {
+      return numValue > Number.MAX_SAFE_INTEGER ? trimmedId : numValue;
+    }
+    return trimmedId;
+  }
+  if (typeof id === "number") {
+    return id > Number.MAX_SAFE_INTEGER ? String(id) : id;
+  }
+  return id;
+}
+function isValidId(id) {
+  if (id === null || id === undefined) {
+    return false;
+  }
+  if (typeof id === "string") {
+    return id.trim() !== "";
+  }
+  if (typeof id === "number") {
+    return Number.isFinite(id);
+  }
+  return false;
+}
+function findMissingIds(existingIds, start, end) {
+  if (existingIds.length > 0 && typeof existingIds[0] === "object" && "id" in existingIds[0]) {
+    const items = existingIds;
+    const ids2 = items.map((item) => Number(item.id)).filter((id) => !isNaN(id)).sort((a, b) => a - b);
+    const missingIds2 = [];
+    let expectedId = 0;
+    for (const id of ids2) {
+      while (expectedId < id) {
+        missingIds2.push(expectedId);
+        expectedId++;
+      }
+      expectedId = id + 1;
+    }
+    return missingIds2;
+  }
+  const ids = existingIds;
+  if (start === undefined || end === undefined) {
+    return [];
+  }
+  const missingIds = [];
+  if (typeof start === "number" && typeof end === "number") {
+    const numericIds = ids.map((id) => Number(id)).filter((id) => !isNaN(id)).sort((a, b) => a - b);
+    for (let i = start;i <= end; i++) {
+      if (!numericIds.includes(i)) {
+        missingIds.push(i);
+      }
+    }
+  } else if (typeof start === "string" && typeof end === "string") {
+    const startCode = start.charCodeAt(0);
+    const endCode = end.charCodeAt(0);
+    for (let i = startCode;i <= endCode; i++) {
+      const char = String.fromCharCode(i);
+      if (!ids.includes(char)) {
+        missingIds.push(char);
+      }
+    }
+  }
+  return missingIds;
+}
+function generateNextId(allData) {
+  if (allData.length > 0 && typeof allData[0] === "object" && "id" in allData[0]) {
+    const items = allData;
+    const numericIds2 = items.map((item) => Number(item.id)).filter((id) => !isNaN(id) && Number.isFinite(id)).sort((a, b) => a - b);
+    if (numericIds2.length === 0)
+      return 1;
+    for (let i = 1;i <= numericIds2.length; i++) {
+      if (!numericIds2.includes(i)) {
+        return i;
+      }
+    }
+    return Math.max(...numericIds2) + 1;
+  }
+  const ids = allData;
+  if (ids.length === 0)
+    return 1;
+  const numericIds = ids.map((id) => Number(id)).filter((id) => !isNaN(id) && Number.isFinite(id));
+  if (numericIds.length === ids.length) {
+    const sortedIds = numericIds.sort((a, b) => a - b);
+    return Math.max(...sortedIds) + 1;
+  }
+  if (ids.every((id) => typeof id === "string")) {
+    return crypto.randomUUID();
+  }
+  return 1;
+}
+function downloadJSON(data, filename) {
+  const dataStr = JSON.stringify(data, null, 2);
+  const dataBlob = new Blob([dataStr], { type: "application/json" });
+  const url = URL.createObjectURL(dataBlob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+function readJSONFile(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader;
+    reader.onload = (e) => {
+      try {
+        const data = JSON.parse(e.target.result);
+        resolve(data);
+      } catch (error) {
+        reject(new Error("El archivo no es un JSON válido"));
+      }
+    };
+    reader.onerror = () => reject(new Error("Error al leer el archivo"));
+    reader.readAsText(file);
+  });
+}
+function validateDatabaseConfig(config) {
+  return config && typeof config === "object" && typeof config.name === "string" && config.name.trim() !== "" && typeof config.version === "number" && config.version > 0 && typeof config.store === "string" && config.store.trim() !== "";
+}
+function createTimestamp(date) {
+  const targetDate = date || new Date;
+  return targetDate.toISOString();
+}
+function debounce(func, wait) {
+  let timeout = null;
+  return (...args) => {
+    if (timeout) {
+      clearTimeout(timeout);
+    }
+    timeout = setTimeout(() => {
+      func(...args);
+    }, wait);
+  };
+}
+function throttle(func, limit) {
+  let inThrottle = false;
+  return (...args) => {
+    if (!inThrottle) {
+      func(...args);
+      inThrottle = true;
+      setTimeout(() => inThrottle = false, limit);
+    }
+  };
+}
+function convertToCSV(data) {
+  if (data.length === 0) {
+    return "";
+  }
+  const firstItemHeaders = data[0] && typeof data[0] === "object" ? Object.keys(data[0]) : [];
+  const allHeaders = new Set;
+  data.forEach((item) => {
+    if (item && typeof item === "object") {
+      Object.keys(item).forEach((key) => allHeaders.add(key));
+    }
+  });
+  const remainingHeaders = Array.from(allHeaders).filter((h) => !firstItemHeaders.includes(h)).sort();
+  const headers = [...firstItemHeaders, ...remainingHeaders];
+  const csvHeaders = headers.join(",");
+  const csvRows = data.map((item) => {
+    return headers.map((header) => {
+      const value = item?.[header] ?? "";
+      if (typeof value === "string" && (value.includes(",") || value.includes('"'))) {
+        return `"${value.replace(/"/g, '""')}"`;
+      }
+      return value;
+    }).join(",");
+  });
+  return [csvHeaders, ...csvRows].join(`
+`);
+}
+
+// src/core/IndexedDBManager.ts
+class IndexedDBManager {
+  dbConfig;
+  emitterInstance;
+  db;
+  defaultIndexes;
+  constructor(dbConfig, options) {
+    const actualConfig = "defaultDatabase" in dbConfig ? dbConfig.defaultDatabase : dbConfig;
+    if (!validateDatabaseConfig(actualConfig)) {
+      throw new Error("Invalid database configuration provided",actualConfig);
+    }
+    this.dbConfig = actualConfig;
+    this.emitterInstance = emitter;
+    this.db = null;
+    this.defaultIndexes = [];
+    if (options?.autoInit) {
+      this.openDatabase().catch((error) => {
+        this.emitterInstance.emit("error", error);
+      });
+    }
+  }
+  setEmitterInstance(emitterInstance) {
+    this.emitterInstance = emitterInstance;
+  }
+  refreshEmitterInstance() {
+    this.emitterInstance = emitter;
+  }
+  setDefaultIndexes(indexes) {
+    this.defaultIndexes = indexes;
+  }
+  async setDatabase(config) {
+    if (!validateDatabaseConfig(config)) {
+      throw new Error("Invalid database configuration provided",config);
+    }
+    this.close();
+    this.dbConfig = config;
+    await this.openDatabase();
+  }
+  getCurrentDatabase() {
+    return this.dbConfig;
+  }
+  async getAll() {
+    return this.getAllData();
+  }
+  async addMany(items) {
+    try {
+      for (const item of items) {
+        await this.saveData(item);
+      }
+      return true;
+    } catch (error) {
+      console.error("Error adding multiple items:", error);
+      return false;
+    }
+  }
+  on(event, callback) {
+    this.emitterInstance.on(event, callback);
+  }
+  off(event, callback) {
+    this.emitterInstance.off(event, callback);
+  }
+  async add(data) {
+    return this.saveData(data);
+  }
+  async updateMany(items) {
+    try {
+      for (const item of items) {
+        await this.updateDataById(item.id, item);
+      }
+      return true;
+    } catch (error) {
+      console.error("Error updating multiple items:", error);
+      return false;
+    }
+  }
+  async count() {
+    return this.executeTransaction(this.dbConfig.store, "readonly", (store) => {
+      return new Promise((resolve, reject) => {
+        const request = store.count();
+        request.onsuccess = () => {
+          resolve(request.result);
+        };
+        request.onerror = () => reject(request.error);
+      });
+    });
+  }
+  async deleteMany(ids) {
+    try {
+      for (const id of ids) {
+        await this.deleteData(id);
+      }
+      return true;
+    } catch (error) {
+      console.error("Error deleting multiple items:", error);
+      return false;
+    }
+  }
+  async idExists(id) {
+    const normalizedId = normalizeId(id);
+    return this.executeTransaction(this.dbConfig.store, "readonly", (store) => {
+      return new Promise((resolve, reject) => {
+        const request = store.get(normalizedId);
+        request.onsuccess = () => {
+          resolve(request.result !== undefined);
+        };
+        request.onerror = () => reject(request.error);
+      });
+    });
+  }
+  async updateDataById(id, updatedData) {
+    if (!isValidId(id)) {
+      throw new Error("Invalid ID provided for update");
+    }
+    const normalizedId = normalizeId(id);
+    const exists = await this.idExists(normalizedId);
+    if (!exists) {
+      return null;
+    }
+    return this.executeTransaction(this.dbConfig.store, "readwrite", (store) => {
+      return new Promise((resolve, reject) => {
+        const getRequest = store.get(normalizedId);
+        getRequest.onsuccess = () => {
+          if (getRequest.result) {
+            const newData = {
+              ...getRequest.result,
+              ...updatedData,
+              id: normalizedId
+            };
+            const putRequest = store.put(newData);
+            putRequest.onsuccess = () => {
+              this.emitEvent("update", newData);
+              resolve(newData);
+            };
+            putRequest.onerror = () => reject(putRequest.error);
+          } else {
+            resolve(null);
+          }
+        };
+        getRequest.onerror = () => reject(getRequest.error);
+      });
+    });
+  }
+  async getDataById(id) {
+    if (!isValidId(id)) {
+      return null;
+    }
+    const normalizedId = normalizeId(id);
+    return this.executeTransaction(this.dbConfig.store, "readonly", (store) => {
+      return new Promise((resolve, reject) => {
+        const request = store.get(normalizedId);
+        request.onsuccess = () => {
+          resolve(request.result || null);
+        };
+        request.onerror = () => reject(request.error);
+      });
+    });
+  }
+  async saveData(data) {
+    if (typeof data !== "object" || data === null) {
+      return Promise.reject(new Error("Invalid data: must be an object."));
+    }
+    let targetId;
+    let isUpdate = false;
+    const hasExplicitId = isValidId(data.id);
+    if (hasExplicitId) {
+      targetId = normalizeId(data.id);
+      isUpdate = await this.idExists(targetId);
+    } else {
+      const allData = await this.getAllData();
+      targetId = generateNextId(allData);
+      isUpdate = false;
+    }
+    const newData = { ...data, id: targetId };
+    const actionType = isUpdate ? "update" : "add";
+    return this.executeTransaction(this.dbConfig.store, "readwrite", (store) => {
+      return new Promise((resolve, reject) => {
+        const request = store.put(newData);
+        request.onsuccess = () => {
+          resolve(newData);
+        };
+        request.onerror = () => {
+          console.error("Error in store.put:", request.error);
+          reject(request.error);
+        };
+      });
+    }).then((savedData) => {
+      this.emitEvent(actionType, savedData);
+      return savedData;
+    });
+  }
+  async deleteData(id) {
+    if (!isValidId(id)) {
+      throw new Error("Invalid ID provided for deletion");
+    }
+    const keyId = normalizeId(id);
+    return this.executeTransaction(this.dbConfig.store, "readwrite", (store) => {
+      return new Promise((resolve, reject) => {
+        const request = store.delete(keyId);
+        request.onsuccess = () => resolve(keyId);
+        request.onerror = () => reject(request.error);
+      });
+    }).then((deletedId) => {
+      this.emitEvent("delete", deletedId);
+      return deletedId;
+    });
+  }
+  async openDatabase() {
+    if (this.db)
+      return this.db;
+    return new Promise((resolve, reject) => {
+      const request = indexedDB.open(this.dbConfig.name, this.dbConfig.version);
+      request.onupgradeneeded = (event) => {
+        const db = event.target.result;
+        if (!db.objectStoreNames.contains(this.dbConfig.store)) {
+          const objectStore = db.createObjectStore(this.dbConfig.store, {
+            keyPath: "id",
+            autoIncrement: false
+          });
+          this.defaultIndexes.forEach((index) => {
+            if (!objectStore.indexNames.contains(index.name)) {
+              objectStore.createIndex(index.name, index.keyPath, {
+                unique: index.unique
+              });
+            }
+          });
+          console.log(`Object store ${this.dbConfig.store} created with indexes.`);
+        } else {
+          const transaction = event.target.transaction;
+          if (transaction) {
+            const objectStore = transaction.objectStore(this.dbConfig.store);
+            this.defaultIndexes.forEach((index) => {
+              if (!objectStore.indexNames.contains(index.name)) {
+                objectStore.createIndex(index.name, index.keyPath, {
+                  unique: index.unique
+                });
+                console.log(`Index ${index.name} created for existing store ${this.dbConfig.store}.`);
+              }
+            });
+          }
+        }
+      };
+      request.onsuccess = () => {
+        this.db = request.result;
+        resolve(request.result);
+      };
+      request.onerror = () => {
+        console.error(`IDB Error opening ${this.dbConfig.name}:`, request.error);
+        reject(request.error);
+      };
+    });
+  }
+  async executeTransaction(storeName, mode, callback) {
+    try {
+      const db = this.db;
+      if (!db) {
+        throw new Error("Database not open. Call openDatabase() first.");
+      }
+      return new Promise((resolve, reject) => {
+        if (!db || !db.objectStoreNames.contains(storeName)) {
+          console.error(`DB not open or store ${storeName} not found`);
+          console.error(`Available stores:`, db ? Array.from(db.objectStoreNames) : "No DB");
+          return reject(new Error(`DB not open or store ${storeName} not found`));
+        }
+        const transaction = db.transaction([storeName], mode);
+        const store = transaction.objectStore(storeName);
+        let result;
+        let hasResult = false;
+        transaction.oncomplete = () => {
+          if (hasResult) {
+            resolve(result);
+          } else {
+            reject(new Error("Transaction completed but no result was set"));
+          }
+        };
+        transaction.onerror = () => {
+          console.error("IDB Transaction Error:", transaction.error);
+          reject(transaction.error);
+        };
+        transaction.onabort = () => {
+          console.warn("IDB Transaction Aborted:", transaction.error);
+          reject(transaction.error || new Error("Transaction aborted"));
+        };
+        try {
+          const callbackResult = callback(store);
+          if (callbackResult instanceof Promise) {
+            callbackResult.then((res) => {
+              result = res;
+              hasResult = true;
+              resolve(result);
+            }).catch((err) => {
+              console.error("Error inside transaction callback promise:", err);
+              if (!transaction.error) {
+                transaction.abort();
+              }
+              reject(err);
+            });
+          } else {
+            result = callbackResult;
+            hasResult = true;
+            resolve(result);
+            return;
+          }
+        } catch (error) {
+          console.error("Error inside transaction callback sync:", error);
+          if (!transaction.error) {
+            transaction.abort();
+          }
+          reject(error);
+        }
+      });
+    } catch (dbOpenError) {
+      console.error("Failed to open DB for transaction:", dbOpenError);
+      return Promise.reject(dbOpenError);
+    }
+  }
+  async getAllData() {
+    return this.executeTransaction(this.dbConfig.store, "readonly", (store) => {
+      return new Promise((resolve, reject) => {
+        const request = store.getAll();
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+      });
+    });
+  }
+  async searchData(query, options = {}) {
+    const allData = await this.getAllData();
+    let filteredData = allData.filter((item) => {
+      return Object.entries(query).every(([key, value]) => {
+        if (typeof value === "string") {
+          return String(item[key]).toLowerCase().includes(value.toLowerCase());
+        }
+        return item[key] === value;
+      });
+    });
+    if (options.orderBy) {
+      filteredData.sort((a, b) => {
+        const aVal = a[options.orderBy];
+        const bVal = b[options.orderBy];
+        const direction = options.orderDirection === "desc" ? -1 : 1;
+        if (aVal < bVal)
+          return -1 * direction;
+        if (aVal > bVal)
+          return 1 * direction;
+        return 0;
+      });
+    }
+    const total = filteredData.length;
+    if (options.limit || options.offset) {
+      const offset = options.offset || 0;
+      const limit = options.limit || total;
+      filteredData = filteredData.slice(offset, offset + limit);
+    }
+    const result = {
+      items: filteredData,
+      total
+    };
+    if (options.offset && options.limit) {
+      result.page = Math.floor(options.offset / options.limit) + 1;
+    }
+    if (options.limit) {
+      result.limit = options.limit;
+    }
+    return result;
+  }
+  async clearDatabase() {
+    return this.executeTransaction(this.dbConfig.store, "readwrite", (store) => {
+      return new Promise((resolve, reject) => {
+        const request = store.clear();
+        request.onsuccess = () => {
+          this.emitEvent("clear", null);
+          resolve();
+        };
+        request.onerror = () => reject(request.error);
+      });
+    });
+  }
+  close() {
+    if (this.db) {
+      this.db.close();
+      this.db = null;
+    }
+  }
+  emitEvent(event, data) {
+    const eventData = {
+      config: this.dbConfig,
+      data,
+      metadata: {
+        timestamp: createTimestamp(),
+        operation: event
+      }
+    };
+    this.emitterInstance?.emit(event, eventData);
+  }
+  async get(id) {
+    return this.executeTransaction(this.dbConfig.store, "readonly", async (store) => {
+      const request = store.get(id);
+      return new Promise((resolve, reject) => {
+        request.onsuccess = () => resolve(request.result || null);
+        request.onerror = () => reject(request.error);
+      });
+    });
+  }
+  async update(item) {
+    const result = await this.executeTransaction(this.dbConfig.store, "readwrite", async (store) => {
+      const request = store.put(item);
+      return new Promise((resolve, reject) => {
+        request.onsuccess = () => resolve(item);
+        request.onerror = () => reject(request.error);
+      });
+    });
+    this.emitEvent("update", result);
+    return result;
+  }
+  async delete(id) {
+    const result = await this.executeTransaction(this.dbConfig.store, "readwrite", async (store) => {
+      const request = store.delete(id);
+      return new Promise((resolve, reject) => {
+        request.onsuccess = () => resolve(true);
+        request.onerror = () => reject(request.error);
+      });
+    });
+    this.emitEvent("delete", null);
+    return result;
+  }
+  async clear() {
+    await this.clearDatabase();
+  }
+  async search(query, options) {
+    const allData = await this.getAllData();
+    const searchFields = options?.fields || ["name", "title", "description"];
+    return allData.filter((item) => {
+      return searchFields.some((field) => {
+        const value = item[field];
+        return typeof value === "string" && value.toLowerCase().includes(query.toLowerCase());
+      });
+    });
+  }
+  async filter(criteria) {
+    const allData = await this.getAllData();
+    return allData.filter((item) => {
+      return Object.entries(criteria).every(([key, value]) => {
+        return item[key] === value;
+      });
+    });
+  }
+  async getMany(ids) {
+    const results = [];
+    for (const id of ids) {
+      const item = await this.get(id);
+      if (item) {
+        results.push(item);
+      }
+    }
+    return results;
+  }
+  async getStats() {
+    const allData = await this.getAllData();
+    return {
+      totalRecords: allData.length,
+      storeName: this.dbConfig.store,
+      databaseName: this.dbConfig.name,
+      version: this.dbConfig.version
+    };
+  }
+}
+// src/utils/database.ts
+async function getAllDataFromDatabase(databaseConfig) {
+  if (!databaseConfig || !databaseConfig.name || !databaseConfig.version) {
+    console.error("Invalid database configuration:", databaseConfig);
+    return [];
+  }
+  return new Promise((resolve) => {
+    const request = indexedDB.open(databaseConfig.name, databaseConfig.version);
+    request.onupgradeneeded = (event) => {
+      const db = event.target.result;
+      if (!db.objectStoreNames.contains(databaseConfig.store)) {
+        db.createObjectStore(databaseConfig.store, { keyPath: "id" });
+      }
+    };
+    request.onsuccess = () => {
+      const db = request.result;
+      if (!db.objectStoreNames.contains(databaseConfig.store)) {
+        db.close();
+        resolve([]);
+        return;
+      }
+      const transaction = db.transaction([databaseConfig.store], "readonly");
+      const store = transaction.objectStore(databaseConfig.store);
+      const getAllRequest = store.getAll();
+      getAllRequest.onsuccess = () => {
+        resolve(getAllRequest.result);
+        db.close();
+      };
+      getAllRequest.onerror = () => {
+        resolve([]);
+        db.close();
+      };
+    };
+    request.onerror = () => {
+      resolve([]);
+    };
+  });
+}
+async function importDataToDatabase(databaseConfig, data, options = {}) {
+  if (!databaseConfig || !databaseConfig.name || !databaseConfig.version || !databaseConfig.store) {
+    console.error("Invalid database configuration:", databaseConfig);
+    return false;
+  }
+  const { clearBefore = true, validate = true, transform } = options;
+  return new Promise((resolve) => {
+    const request = indexedDB.open(databaseConfig.name, databaseConfig.version);
+    request.onupgradeneeded = (event) => {
+      const db = event.target.result;
+      if (!db.objectStoreNames.contains(databaseConfig.store)) {
+        db.createObjectStore(databaseConfig.store, { keyPath: "id" });
+      }
+    };
+    request.onsuccess = () => {
+      const db = request.result;
+      const transaction = db.transaction([databaseConfig.store], "readwrite");
+      const store = transaction.objectStore(databaseConfig.store);
+      const processData = () => {
+        let processedData = data;
+        if (validate) {
+          processedData = data.filter((item) => {
+            return item && typeof item === "object" && (item.id !== undefined && item.id !== null);
+          });
+        }
+        if (transform) {
+          processedData = processedData.map(transform);
+        }
+        let completed = 0;
+        const total = processedData.length;
+        if (total === 0) {
+          db.close();
+          resolve(true);
+          return;
+        }
+        processedData.forEach((item) => {
+          const addRequest = store.put(item);
+          addRequest.onsuccess = () => {
+            completed++;
+            if (completed === total) {
+              db.close();
+              resolve(true);
+            }
+          };
+          addRequest.onerror = () => {
+            console.error("Error importing item:", item, addRequest.error);
+            completed++;
+            if (completed === total) {
+              db.close();
+              resolve(false);
+            }
+          };
+        });
+      };
+      if (clearBefore) {
+        const clearRequest = store.clear();
+        clearRequest.onsuccess = () => {
+          processData();
+        };
+        clearRequest.onerror = () => {
+          db.close();
+          resolve(false);
+        };
+      } else {
+        processData();
+      }
+    };
+    request.onerror = () => {
+      resolve(false);
+    };
+  });
+}
+async function exportDataFromDatabase(databaseConfig, options = {}) {
+  const { format = "json", filename, filters } = options;
+  try {
+    let data = await getAllDataFromDatabase(databaseConfig);
+    if (filters && Object.keys(filters).length > 0) {
+      data = data.filter((item) => {
+        return Object.entries(filters).every(([key, value]) => {
+          if (typeof value === "string") {
+            return String(item[key]).toLowerCase().includes(value.toLowerCase());
+          }
+          return item[key] === value;
+        });
+      });
+    }
+    const timestamp = new Date().toISOString().split("T")[0];
+    const defaultFilename = filename || `${databaseConfig.name}_${databaseConfig.store}_${timestamp}`;
+    if (format === "csv") {
+      const csvContent = convertToCSV(data);
+      const blob = new Blob([csvContent], { type: "text/csv" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `${defaultFilename}.csv`;
+      link.click();
+      URL.revokeObjectURL(url);
+    } else {
+      downloadJSON(data, `${defaultFilename}.json`);
+    }
+  } catch (error) {
+    console.error("Error exporting data:", error);
+    throw error;
+  }
+}
+async function importDataFromFile(file, databaseConfig, options = {}) {
+  try {
+    const data = await readJSONFile(file);
+    return await importDataToDatabase(databaseConfig, data, options);
+  } catch (error) {
+    console.error("Error importing data from file:", error);
+    return false;
+  }
+}
+async function createBackup(databaseConfig, filename) {
+  const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+  const backupFilename = filename || `backup_${databaseConfig.name}_${timestamp}.json`;
+  await exportDataFromDatabase(databaseConfig, {
+    format: "json",
+    filename: backupFilename
+  });
+}
+async function restoreFromBackup(file, databaseConfig) {
+  return await importDataFromFile(file, databaseConfig, {
+    clearBefore: true,
+    validate: true
+  });
+}
+// src/index.ts
+var defaultConfig = {
+  name: "DefaultDB",
+  version: 1,
+  store: "default"
+};
+var defaultManager = new IndexedDBManager(defaultConfig);
+function createManager(config, options) {
+  return new IndexedDBManager(config, options);
+}
+var version = "1.0.0";
+var info = {
+  name: "IndexedDB Manager",
+  version,
+  description: "A comprehensive TypeScript library for managing IndexedDB operations",
+  author: "Your Name",
+  license: "MIT"
+};
+var src_default = IndexedDBManager;
+
+//# debugId=33CC0948156AD21764756E2164756E21
+//# sourceMappingURL=index.js.map
+
+    </script>
     <script>
         let dbManager = null;
         
@@ -230,15 +1172,7 @@
                 const config = {
                     name: dbName,
                     version: 1,
-                    stores: [{
-                        name: storeName,
-                        keyPath: 'id',
-                        autoIncrement: false,
-                        indexes: [
-                            { name: 'name', keyPath: 'name', unique: false },
-                            { name: 'email', keyPath: 'email', unique: true }
-                        ]
-                    }]
+                    store: storeName
                 };
                 
                 dbManager = new IndexedDBManager(config);
@@ -264,7 +1198,7 @@
                     addOutput('eventsOutput', `🗑️ Eliminado: ${id}`);
                 });
                 
-                await dbManager.init();
+                await dbManager.openDatabase()
                 addOutput('dbOutput', `Base de datos '${dbName}' inicializada correctamente`);
                 showStatus('Base de datos inicializada correctamente');
                 

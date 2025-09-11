@@ -45,6 +45,10 @@ describe('IndexedDBManager', () => {
       (globalThis as any).indexedDB = new MockIDBFactory();
     }
     
+    // Reset mock emitter state first
+    mockEmitter._events = {};
+    (globalThis as any).__mockEmitter = mockEmitter;
+    
     testConfig = {
       name: 'TestDB',
       version: 1,
@@ -175,7 +179,11 @@ describe('IndexedDBManager', () => {
 
   describe('Operaciones por lotes', () => {
     beforeEach(async () => {
+      manager.refreshEmitterInstance();
+      
       await manager.setDatabase(testConfig);
+      await manager.openDatabase();
+      await manager.clear(); // Clear database to ensure clean state
       await waitForAsync();
     });
 
@@ -270,7 +278,11 @@ describe('IndexedDBManager', () => {
 
   describe('Eventos', () => {
     beforeEach(async () => {
+      manager.refreshEmitterInstance();
+      
       await manager.setDatabase(testConfig);
+      await manager.openDatabase();
+      await manager.clear(); // Clear database to ensure clean state
       await waitForAsync();
     });
 
@@ -282,9 +294,6 @@ describe('IndexedDBManager', () => {
         eventFired = true;
         eventData = data;
       });
-      
-      // Ensure database is opened
-      await manager.openDatabase();
       
       const testItem = { id: 1, name: 'Test Item', value: 100 };
       await manager.add(testItem);

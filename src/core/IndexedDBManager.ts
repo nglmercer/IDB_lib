@@ -36,7 +36,7 @@ export class IndexedDBManager {
     
     this.dbConfig = actualConfig;
     // Inicializar el emitter (usar mock en tests)
-    this.emitterInstance = (globalThis as any).__mockEmitter || emitter;
+    this.emitterInstance = emitter;
     this.db = null;
     this.defaultIndexes = [];
     
@@ -45,6 +45,20 @@ export class IndexedDBManager {
         this.emitterInstance.emit('error', error);
       });
     }
+  }
+
+  /**
+   * Set the emitter instance (for testing)
+   */
+  setEmitterInstance(emitterInstance: Emitter): void {
+    this.emitterInstance = emitterInstance;
+  }
+
+  /**
+   * Refresh emitter instance from global mock if available
+   */
+  refreshEmitterInstance(): void {
+    this.emitterInstance = emitter;//(globalThis as any).__mockEmitter || 
   }
 
   /**
@@ -615,8 +629,8 @@ export class IndexedDBManager {
         timestamp: createTimestamp(),
         operation: event
       }
-    };
-    
+    }
+    //(globalThis as any).__mockEmitter ||  only test
     this.emitterInstance?.emit(event, eventData);
   }
 
