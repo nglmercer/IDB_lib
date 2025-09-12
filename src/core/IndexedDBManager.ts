@@ -371,58 +371,95 @@ export class IndexedDBManager {
     if (this.db) return this.db;
 
     return new Promise<IDBDatabase>((resolve, reject) => {
+      if (!validateDatabaseConfig(this.dbConfig)) {
+        reject(new Error('Invalid database configuration'));
+        return;
+      }
+
       const request = indexedDB.open(this.dbConfig.name, this.dbConfig.version);
 
       request.onupgradeneeded = (event: IDBVersionChangeEvent) => {
         const db = (event.target as IDBOpenDBRequest).result;
-        if (!db.objectStoreNames.contains(this.dbConfig.store)) {
-          // Siempre usar 'id' como keyPath
-          const objectStore = db.createObjectStore(this.dbConfig.store, {
-            keyPath: "id",
-            autoIncrement: false,
-          });
+        const transaction = (event.target as IDBOpenDBRequest).transaction;
+        
+        if (!transaction) {
+          console.error('No transaction available during upgrade');
+          return;
+        }
 
-          this.defaultIndexes.forEach((index) => {
-            if (!objectStore.indexNames.contains(index.name)) {
-              objectStore.createIndex(index.name, index.keyPath, {
-                unique: index.unique,
-              });
-            }
-          });
-          
-          console.log(
-            `Object store ${this.dbConfig.store} created with indexes.`
-          );
-        } else {
-          // Verificar y añadir índices si faltan en una versión existente
-          const transaction = (event.target as IDBOpenDBRequest).transaction;
-          if (transaction) {
+        try {
+          if (!db.objectStoreNames.contains(this.dbConfig.store)) {
+            // Crear nuevo object store
+            const objectStore = db.createObjectStore(this.dbConfig.store, {
+              keyPath: "id",
+              autoIncrement: false,
+            });
+
+            // Añadir índices al nuevo store
+            this.defaultIndexes.forEach((index) => {
+              try {
+                if (!objectStore.indexNames.contains(index.name)) {
+                  objectStore.createIndex(index.name, index.keyPath, {
+                    unique: index.unique,
+                  });
+                  console.log(`Index ${index.name} created for new store ${this.dbConfig.store}.`);
+                }
+              } catch (indexError) {
+                console.error(`Error creating index ${index.name}:`, indexError);
+              }
+            });
+            
+            console.log(`Object store ${this.dbConfig.store} created with indexes.`);
+          } else {
+            // Store existe, verificar y añadir índices faltantes
             const objectStore = transaction.objectStore(this.dbConfig.store);
             this.defaultIndexes.forEach((index) => {
-              if (!objectStore.indexNames.contains(index.name)) {
-                objectStore.createIndex(index.name, index.keyPath, {
-                  unique: index.unique,
-                });
-                console.log(
-                  `Index ${index.name} created for existing store ${this.dbConfig.store}.`
-                );
+              try {
+                if (!objectStore.indexNames.contains(index.name)) {
+                  objectStore.createIndex(index.name, index.keyPath, {
+                    unique: index.unique,
+                  });
+                  console.log(`Index ${index.name} created for existing store ${this.dbConfig.store}.`);
+                }
+              } catch (indexError) {
+                console.error(`Error creating index ${index.name}:`, indexError);
               }
             });
           }
+        } catch (upgradeError) {
+          console.error('Error during database upgrade:', upgradeError);
+          // No rechazamos aquí, dejamos que el evento onerror maneje el error
         }
       };
 
       request.onsuccess = () => {
-        this.db = request.result;
-        resolve(request.result);
+        try {
+          this.db = request.result;
+          console.log(`Database ${this.dbConfig.name} opened successfully`);
+          resolve(this.db);
+        } catch (successError) {
+          console.error('Error in onsuccess handler:', successError);
+          reject(successError);
+        }
       };
-
+      
       request.onerror = () => {
-        console.error(
-          `IDB Error opening ${this.dbConfig.name}:`,
-          request.error
-        );
-        reject(request.error);
+        try {
+          const error = request.error || new Error('Unknown database error');
+          console.error('Database opening failed:', error);
+          if (this.db) {
+            this.db.close();
+            this.db = null;
+          }
+          reject(error);
+        } catch (errorHandlingError) {
+          console.error('Error in onerror handler:', errorHandlingError);
+          reject(errorHandlingError);
+        }
+      };
+      
+      request.onblocked = () => {
+        console.warn(`Database ${this.dbConfig.name} is blocked. Close other connections.`);
       };
     });
   }
@@ -438,7 +475,10 @@ export class IndexedDBManager {
     try {
       const db = this.db;
       if (!db) {
-        throw new Error('Database not open. Call openDatabase() first.');
+        await this.openDatabase();
+        if (!this.db) {
+          throw new Error('Database not open. Call openDatabase() first.');
+        }
       }
 
       return new Promise<T>((resolve, reject) => {
