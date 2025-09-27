@@ -14,7 +14,11 @@ import type {
   EmitEvents,
   SearchOptions,
   SearchResult,
-  IndexedDBManagerOptions
+  IndexedDBManagerOptions,
+  EventCallback,
+  FilterCriteria,
+  SearchTextOptions,
+  DatabaseStats
 } from '../types/index.js';
 
 /**
@@ -118,15 +122,19 @@ export class IndexedDBManager {
   /**
    * Escucha eventos del emisor
    */
-  on(event: string, callback: (data: any) => void): void {
+  on(event: EmitEvents, callback: EventCallback): void;
+  on(event: string, callback: EventCallback): void;
+  on(event: string, callback: EventCallback): void {
     this.emitterInstance.on(event, callback);
   }
 
   /**
    * Deja de escuchar eventos del emisor
    */
-  off(event: string, callback: (data: any) => void): void {
-    this.emitterInstance.off(event, callback);
+  off(event: EmitEvents, callback: EventCallback): void;
+  off(event: string, callback: EventCallback): void;
+  off(event: string, callback: EventCallback): void {
+    this.emitterInstance.off(event, callback as EventCallback<unknown>);
   }
 
   /**
@@ -473,13 +481,13 @@ export class IndexedDBManager {
     callback: (store: IDBObjectStore) => T | Promise<T>
   ): Promise<T> {
     try {
-      const db = this.db;
-      if (!db) {
+      if (!this.db) {
         await this.openDatabase();
         if (!this.db) {
           throw new Error('Database not open. Call openDatabase() first.');
         }
       }
+      const db = this.db;
 
       return new Promise<T>((resolve, reject) => {
         if (!db || !db.objectStoreNames.contains(storeName)) {
@@ -741,14 +749,14 @@ export class IndexedDBManager {
   /**
    * Busca elementos por texto
    */
-  async search(query: string, options?: { fields?: string[] }): Promise<DatabaseItem[]> {
+  async search(query: string, options?: SearchTextOptions): Promise<DatabaseItem[]> {
     const allData = await this.getAllData();
     const searchFields = options?.fields || ['name', 'title', 'description'];
-    
+
     return allData.filter(item => {
       return searchFields.some(field => {
         const value = item[field];
-        return typeof value === 'string' && 
+        return typeof value === 'string' &&
                value.toLowerCase().includes(query.toLowerCase());
       });
     });
@@ -757,9 +765,9 @@ export class IndexedDBManager {
   /**
    * Filtra elementos por criterios
    */
-  async filter(criteria: Record<string, any>): Promise<DatabaseItem[]> {
+  async filter(criteria: FilterCriteria): Promise<DatabaseItem[]> {
     const allData = await this.getAllData();
-    
+
     return allData.filter(item => {
       return Object.entries(criteria).every(([key, value]) => {
         return item[key] === value;
@@ -786,14 +794,9 @@ export class IndexedDBManager {
   /**
    * Obtiene estadísticas de la base de datos
    */
-  async getStats(): Promise<{
-    totalRecords: number;
-    storeName: string;
-    databaseName: string;
-    version: number;
-  }> {
+  async getStats(): Promise<DatabaseStats> {
     const allData = await this.getAllData();
-    
+
     return {
       totalRecords: allData.length,
       storeName: this.dbConfig.store,

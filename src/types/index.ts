@@ -80,7 +80,7 @@ export type EmitEvents = "add" | "update" | "save" | "delete" | "clear" | "expor
  */
 export const EMIT_EVENTS: EmitEvents[] = [
   "update",
-  "save", 
+  "save",
   "delete",
   "clear",
   "export",
@@ -88,7 +88,7 @@ export const EMIT_EVENTS: EmitEvents[] = [
 ];
 
 // Tipos para el sistema de eventos
-export type EventCallback<T = any> = (data: T) => void;
+export type EventCallback<T = EmitEventData> = (data: T) => void;
 export type EventMap = Record<string, EventCallback>;
 
 // Opciones del IndexedDBManager
@@ -177,4 +177,38 @@ export interface SearchOptions {
   orderBy?: string;
   /** Dirección del ordenamiento */
   orderDirection?: 'asc' | 'desc';
+}
+
+/**
+ * Tipos de valores para filtrado
+ */
+export type FilterValue = string | number | boolean;
+
+/**
+ * Criterios de filtrado
+ */
+export interface FilterCriteria {
+  [key: string]: FilterValue;
+}
+
+/**
+ * Opciones para búsqueda de texto
+ */
+export interface SearchTextOptions {
+  /** Campos específicos para buscar */
+  fields?: string[];
+}
+
+/**
+ * Estadísticas de la base de datos
+ */
+export interface DatabaseStats {
+  /** Número total de registros */
+  totalRecords: number;
+  /** Nombre del store */
+  storeName: string;
+  /** Nombre de la base de datos */
+  databaseName: string;
+  /** Versión de la base de datos */
+  version: number;
 }

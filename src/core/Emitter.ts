@@ -1,7 +1,7 @@
 /**
  * Tipo de función de callback para eventos
  */
-type EventCallback<T = any> = (data: T) => void;
+type EventCallback<T = unknown> = (data: T) => void;
 
 /**
  * Mapa de eventos y sus callbacks
@@ -20,7 +20,7 @@ export class Emitter {
    * @param event Nombre del evento
    * @param callback Función callback a ejecutar
    */
-  on<T = any>(event: string, callback: EventCallback<T>): void {
+  on<T = unknown>(event: string, callback: EventCallback<T>): void {
     if (!this.events[event]) {
       this.events[event] = [];
     }
@@ -32,7 +32,7 @@ export class Emitter {
    * @param event Nombre del evento
    * @param callback Función callback a ejecutar
    */
-  once<T = any>(event: string, callback: EventCallback<T>): void {
+  once<T = unknown>(event: string, callback: EventCallback<T>): void {
     const onceCallback = (data: T) => {
       callback(data);
       this.off(event, onceCallback as EventCallback);
