@@ -29,7 +29,7 @@ bun add idb-manager
 ### CDN
 - not implemented yet
 ```html
-<script src="https://cdn.jsdelivr.net/npm/idb-manager@latest/dist/idb-manager.min.js"></script>
+<script src=" https://cdn.jsdelivr.net/npm/idb-manager@1.0.5/dist/cdn/index.min.js "></script>
 ```
 
 ## 🛠️ Plan de Desarrollo
