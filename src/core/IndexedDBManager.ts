@@ -604,7 +604,13 @@ export class IndexedDBManager {
         const aVal = a[options.orderBy!];
         const bVal = b[options.orderBy!];
         const direction = options.orderDirection === 'desc' ? -1 : 1;
-        
+
+        // Manejar valores null/undefined
+        if (aVal == null && bVal == null) return 0;
+        if (aVal == null) return 1 * direction;
+        if (bVal == null) return -1 * direction;
+
+        // Comparación segura de valores
         if (aVal < bVal) return -1 * direction;
         if (aVal > bVal) return 1 * direction;
         return 0;

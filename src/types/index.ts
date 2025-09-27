@@ -23,14 +23,87 @@ export interface DatabaseIndex {
 }
 
 /**
- * Elemento de datos en la base de datos
+ * Tipos base para IDs de elementos
+ */
+export type DatabaseItemId = string | number;
+
+/**
+ * Tipos de datos soportados en propiedades de elementos
+ */
+export type DatabaseItemValue =
+  | string
+  | number
+  | boolean
+  | null
+  | DatabaseItemId
+  | DatabaseItemValue[]
+  | { [key: string]: DatabaseItemValue };
+
+/**
+ * Elemento de datos en la base de datos con mejor type safety
  */
 export interface DatabaseItem {
   /** ID único del elemento */
-  id: string | number;
-  /** Propiedades adicionales del elemento */
-  [key: string]: any;
+  readonly id: DatabaseItemId;
+  /** Timestamp de creación (opcional, se puede agregar automáticamente) */
+  readonly createdAt?: number;
+  /** Timestamp de última actualización (opcional, se puede manejar automáticamente) */
+  readonly updatedAt?: number;
+  /** Propiedades adicionales del elemento con type safety */
+  [key: string]: DatabaseItemValue | DatabaseItemId | number | undefined;
 }
+
+/**
+ * Elemento para crear nuevos registros (sin ID requerido)
+ */
+export type CreateDatabaseItem<T extends Record<string, DatabaseItemValue> = Record<string, DatabaseItemValue>> = Omit<DatabaseItem, 'id'> & {
+  id?: DatabaseItemId;
+} & T;
+
+/**
+ * Elemento para actualizar registros (todas las propiedades opcionales excepto ID)
+ */
+export type UpdateDatabaseItem<T extends Record<string, DatabaseItemValue> = Record<string, DatabaseItemValue>> = Partial<Omit<DatabaseItem, 'id'>> & {
+  id: DatabaseItemId;
+} & Partial<T>;
+
+/**
+ * Configuración de esquema para validación de tipos
+ */
+export interface DatabaseSchema<T extends Record<string, DatabaseItemValue> = Record<string, DatabaseItemValue>> {
+  /** Campos requeridos en el elemento */
+  requiredFields: (keyof T)[];
+  /** Campos opcionales en el elemento */
+  optionalFields: (keyof T)[];
+  /** Validadores personalizados para campos específicos */
+  validators?: {
+    [K in keyof T]?: (value: T[K]) => boolean | string;
+  };
+  /** Campos que deben ser únicos */
+  uniqueFields?: (keyof T)[];
+  /** Campos indexados para búsquedas */
+  indexedFields?: (keyof T)[];
+}
+
+/**
+ * Elemento de base de datos tipado específicamente
+ */
+export type TypedDatabaseItem<T extends Record<string, DatabaseItemValue> = Record<string, DatabaseItemValue>> = DatabaseItem & T;
+
+/**
+ * Crear elemento tipado (sin ID requerido)
+ */
+export type CreateTypedItem<T extends Record<string, DatabaseItemValue> = Record<string, DatabaseItemValue>> = CreateDatabaseItem<T>;
+
+/**
+ * Actualizar elemento tipado (ID requerido)
+ */
+export type UpdateTypedItem<T extends Record<string, DatabaseItemValue> = Record<string, DatabaseItemValue>> = UpdateDatabaseItem<T>;
+
+/**
+ * Resultado de búsqueda tipado
+ */
+export interface TypedSearchResult<T extends Record<string, DatabaseItemValue> = Record<string, DatabaseItemValue>> extends SearchResult<TypedDatabaseItem<T>> {}
 
 /**
  * Datos del evento emitido
