@@ -1,5 +1,12 @@
 import { beforeAll, afterAll, beforeEach, afterEach } from 'bun:test';
 
+// Class for objectStoreNames that extends Array with contains method
+class ObjectStoreNamesArray extends Array<string> {
+  contains(name: string): boolean {
+    return this.includes(name);
+  }
+}
+
 // Mock IndexedDB para el entorno de testing
 class MockIDBRequest {
   result: any = null;
@@ -7,7 +14,7 @@ class MockIDBRequest {
   onsuccess: ((event: any) => void) | null = null;
   onerror: ((event: any) => void) | null = null;
   readyState: string = 'pending';
-  private transaction?: MockIDBTransaction;
+  protected transaction?: MockIDBTransaction;
 
   constructor(result?: any, error?: any, transaction?: MockIDBTransaction) {
     this.transaction = transaction;
@@ -42,7 +49,7 @@ class MockIDBObjectStore {
   name: string;
   keyPath: string;
   autoIncrement: boolean;
-  private transaction?: MockIDBTransaction;
+  public transaction?: MockIDBTransaction;
   private dbKey: string;
 
   constructor(name: string, options: { keyPath?: string; autoIncrement?: boolean } = {}, dbKey: string = 'default') {
@@ -194,11 +201,10 @@ class MockIDBTransaction {
 class MockIDBDatabase {
   name: string;
   version: number;
-  objectStoreNames: string[] & { contains: (name: string) => boolean } = Object.assign([], {
-    contains: function(name: string) {
-      return this.includes(name);
-    }
-  });
+  objectStoreNames: ObjectStoreNamesArray = (() => {
+    const arr = new ObjectStoreNamesArray();
+    return arr;
+  })();
   stores: Map<string, MockIDBObjectStore> = new Map();
   onversionchange: ((event: any) => void) | null = null;
   onclose: ((event: any) => void) | null = null;
@@ -219,7 +225,7 @@ class MockIDBDatabase {
 
   deleteObjectStore(name: string): void {
     this.stores.delete(name);
-    this.objectStoreNames = this.objectStoreNames.filter(n => n !== name);
+    this.objectStoreNames = this.objectStoreNames.filter(n => n !== name) as ObjectStoreNamesArray;
   }
 
   transaction(storeNames: string | string[], mode: string = 'readonly'): MockIDBTransaction {
@@ -237,7 +243,6 @@ class MockIDBDatabase {
 class MockIDBOpenDBRequest extends MockIDBRequest {
   onupgradeneeded: ((event: any) => void) | null = null;
   onblocked: ((event: any) => void) | null = null;
-  transaction: MockIDBTransaction | null = null;
 
   constructor(name: string, version?: number) {
     // Get or create database from factory
@@ -294,7 +299,7 @@ class MockIDBFactory {
     return new MockIDBRequest(undefined);
   }
 
-  databases(): Promise<{ name: string; version: number }[]> {
+  getDatabases(): Promise<{ name: string; version: number }[]> {
     return Promise.resolve(
       Array.from(this.databases.entries()).map(([name, db]) => ({
         name,

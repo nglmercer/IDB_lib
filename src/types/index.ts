@@ -37,7 +37,8 @@ export type DatabaseItemValue =
   | null
   | DatabaseItemId
   | DatabaseItemValue[]
-  | { [key: string]: DatabaseItemValue };
+  | { [key: string]: DatabaseItemValue }
+  | unknown;
 
 /**
  * Elemento de datos en la base de datos con mejor type safety
@@ -50,7 +51,7 @@ export interface DatabaseItem {
   /** Timestamp de última actualización (opcional, se puede manejar automáticamente) */
   readonly updatedAt?: number;
   /** Propiedades adicionales del elemento con type safety */
-  [key: string]: DatabaseItemValue | DatabaseItemId | number | undefined;
+  [key: string]: DatabaseItemValue | DatabaseItemId | number | undefined | unknown;
 }
 
 /**
