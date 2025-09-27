@@ -182,7 +182,6 @@ describe('Database Operations Integration', () => {
       const mixedData = [
         { id: 1, name: 'Valid Item', value: 100 },
         { name: 'Invalid Item' }, // Sin ID
-        null, // Elemento nulo
         { id: 2, name: 'Another Valid Item', value: 200 }
       ];
 

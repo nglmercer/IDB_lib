@@ -45,18 +45,36 @@ class MockIDBRequest {
   }
 }
 
+class MockIDBIndex {
+  name: string;
+  keyPath: string | string[];
+  unique: boolean;
+  objectStore: MockIDBObjectStore;
+
+  constructor(name: string, keyPath: string | string[], unique: boolean = false, objectStore: MockIDBObjectStore) {
+    this.name = name;
+    this.keyPath = keyPath;
+    this.unique = unique;
+    this.objectStore = objectStore;
+  }
+}
+
 class MockIDBObjectStore {
   name: string;
   keyPath: string;
   autoIncrement: boolean;
   public transaction?: MockIDBTransaction;
   private dbKey: string;
+  public indexNames: { contains: (name: string) => boolean };
 
   constructor(name: string, options: { keyPath?: string; autoIncrement?: boolean } = {}, dbKey: string = 'default') {
     this.name = name;
     this.keyPath = options.keyPath || 'id';
     this.autoIncrement = options.autoIncrement || false;
     this.dbKey = dbKey;
+    this.indexNames = {
+      contains: (name: string) => false // Indexes not implemented in mock
+    };
   }
 
   private get data(): Map<any, any> {
@@ -109,6 +127,16 @@ class MockIDBObjectStore {
 
   count(): MockIDBRequest {
     return new MockIDBRequest(this.data.size, undefined, this.transaction);
+  }
+
+  createIndex(name: string, keyPath: string | string[], options?: { unique?: boolean }): MockIDBIndex {
+    // Mock index - just return a simple object
+    return {
+      name,
+      keyPath,
+      unique: options?.unique || false,
+      objectStore: this
+    } as MockIDBIndex;
   }
 }
 
@@ -424,6 +452,7 @@ beforeAll(() => {
 // Limpiar después de cada test
 afterEach(() => {
   // Limpiar todas las bases de datos mock
+  globalDatabaseStorage.clear();
   (globalThis as any).indexedDB = new MockIDBFactory();
 });
 

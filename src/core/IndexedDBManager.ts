@@ -18,7 +18,8 @@ import type {
   EventCallback,
   FilterCriteria,
   SearchTextOptions,
-  DatabaseStats
+  DatabaseStats,
+  CreateDatabaseItem
 } from '../types/index.js';
 
 /**
@@ -54,12 +55,9 @@ export class StoreProxy {
     return this.manager.getDataByIdFromStore(this.storeName, id);
   }
 
-  async update(item: DatabaseItem): Promise<DatabaseItem> {
+  async update(item: DatabaseItem): Promise<DatabaseItem | null> {
     const result = await this.manager.updateDataByIdInStore(this.storeName, item.id, item);
-    if (!result) {
-      throw new Error(`Item with id ${item.id} not found`);
-    }
-    return result!; 
+    return result;
   }
 
   async delete(id: string | number): Promise<boolean> {
@@ -240,7 +238,7 @@ export class IndexedDBManager {
     this.emitterInstance.off(event, callback as EventCallback<unknown>);
   }
 
-  async add(data: Partial<DatabaseItem>): Promise<DatabaseItem> {
+  async add(data: Partial<CreateDatabaseItem>): Promise<DatabaseItem> {
     return this.saveData(data);
   }
 
@@ -587,7 +585,7 @@ export class IndexedDBManager {
     return this.getDataByIdFromStore(this.dbConfig.store, id);
   }
 
-  async saveData(data: Partial<DatabaseItem>): Promise<DatabaseItem> {
+  async saveData(data: Partial<CreateDatabaseItem>): Promise<DatabaseItem> {
     return this.saveDataToStore(this.dbConfig.store, data);
   }
 

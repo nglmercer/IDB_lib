@@ -1,4 +1,4 @@
-import type { DatabaseConfig, DatabaseItem, ImportOptions, ExportOptions } from '../types/index.js';
+import type { DatabaseConfig, DatabaseItem, ImportOptions, ExportOptions,CreateDatabaseItem } from '../types/index.js';
 import { downloadJSON, readJSONFile, convertToCSV } from './helpers.js';
 
 /**
@@ -57,7 +57,7 @@ export async function getAllDataFromDatabase(
  */
 export async function importDataToDatabase(
   databaseConfig: DatabaseConfig,
-  data: DatabaseItem[],
+  data: CreateDatabaseItem[],
   options: ImportOptions = {}
 ): Promise<boolean> {
   // Validate database configuration first

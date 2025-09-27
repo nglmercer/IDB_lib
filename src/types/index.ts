@@ -47,9 +47,9 @@ export interface DatabaseItem {
   /** ID único del elemento */
   readonly id: DatabaseItemId;
   /** Timestamp de creación (opcional, se puede agregar automáticamente) */
-  readonly createdAt?: number;
+  readonly createdAt?: number | string;
   /** Timestamp de última actualización (opcional, se puede manejar automáticamente) */
-  readonly updatedAt?: number;
+  readonly updatedAt?: number | string;
   /** Propiedades adicionales del elemento con type safety */
   [key: string]: DatabaseItemValue | DatabaseItemId | number | undefined | unknown;
 }
