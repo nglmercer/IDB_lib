@@ -15,7 +15,7 @@ export type {
 } from './types/index.js';
 
 // Exportar clase principal
-export { IndexedDBManager,StoreProxy } from './core/IndexedDBManager.js';
+export { IndexedDBManager,StoreProxy,SchemaManager } from './core/IndexedDBManager.js';
 // Exportar utilidades
 export {
   normalizeId,
