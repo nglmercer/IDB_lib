@@ -1,4 +1,4 @@
-import type { DatabaseConfig, DatabaseItem } from '../types/index.js';
+import type { DatabaseConfig, DatabaseItem,DatabaseIndex,DatabaseSchema,StoreSchema } from '../types/index.js';
 
 /**
  * Normaliza un ID para uso consistente en IndexedDB
@@ -191,9 +191,6 @@ export function readJSONFile(file: File): Promise<any[]> {
   });
 }
 
-/**
- * Valida la configuración de la base de datos
- */
 export function validateDatabaseConfig(config: any): config is DatabaseConfig {
   return (
     config &&
@@ -207,8 +204,130 @@ export function validateDatabaseConfig(config: any): config is DatabaseConfig {
   );
 }
 
+// Validate StoreSchema
+export function validateStoreSchema(storeConfig: any): storeConfig is StoreSchema {
+  if (!storeConfig || typeof storeConfig !== 'object') {
+    return false;
+  }
+
+  // Required: name
+  if (typeof storeConfig.name !== 'string' || storeConfig.name.trim() === '') {
+    return false;
+  }
+
+  // Optional: keyPath
+  if (storeConfig.keyPath !== undefined && typeof storeConfig.keyPath !== 'string') {
+    return false;
+  }
+
+  // Optional: autoIncrement
+  if (storeConfig.autoIncrement !== undefined && typeof storeConfig.autoIncrement !== 'boolean') {
+    return false;
+  }
+
+  // Optional: indexes
+  if (storeConfig.indexes !== undefined) {
+    if (!Array.isArray(storeConfig.indexes)) {
+      return false;
+    }
+    
+    return storeConfig.indexes.every((index: any) => validateDatabaseIndex(index));
+  }
+
+  return true;
+}
+
+// Validate DatabaseSchema
+export function validateDatabaseSchema(schema: any): schema is DatabaseSchema {
+  if (!schema || typeof schema !== 'object') {
+    return false;
+  }
+
+  // Required: name
+  if (typeof schema.name !== 'string' || schema.name.trim() === '') {
+    return false;
+  }
+
+  // Required: version
+  if (typeof schema.version !== 'number' || schema.version <= 0) {
+    return false;
+  }
+
+  // Required: stores (array with at least one store)
+  if (!Array.isArray(schema.stores) || schema.stores.length === 0) {
+    return false;
+  }
+
+  // Validate each store configuration
+  return schema.stores.every((store: any) => validateStoreSchema(store));
+}
+
+// Validate DatabaseIndex
+export function validateDatabaseIndex(index: any): index is DatabaseIndex {
+  if (!index || typeof index !== 'object') {
+    return false;
+  }
+
+  // Required: name
+  if (typeof index.name !== 'string' || index.name.trim() === '') {
+    return false;
+  }
+
+  // Required: keyPath
+  if (typeof index.keyPath !== 'string' || index.keyPath.trim() === '') {
+    return false;
+  }
+
+  // Optional: unique
+  if (index.unique !== undefined && typeof index.unique !== 'boolean') {
+    return false;
+  }
+
+  return true;
+}
+
+// Enhanced validator that handles all configuration types used in IndexedDBManager
+export function validateAnyDatabaseConfig(config: any): boolean {
+  if (!config || typeof config !== 'object') {
+    return false;
+  }
+
+  // Check if it's a DatabaseSchema (has 'stores' property)
+  if ('stores' in config) {
+    return validateDatabaseSchema(config);
+  }
+
+  // Check if it's a wrapper object with 'defaultDatabase' property
+  if ('defaultDatabase' in config) {
+    return validateDatabaseConfig(config.defaultDatabase);
+  }
+
+  // Check if it's a direct DatabaseConfig
+  return validateDatabaseConfig(config);
+}
+
+// Utility to determine configuration type
+export function getConfigurationType(config: any): 'schema' | 'config' | 'wrapper' | 'invalid' {
+  if (!config || typeof config !== 'object') {
+    return 'invalid';
+  }
+
+  if ('stores' in config && validateDatabaseSchema(config)) {
+    return 'schema';
+  }
+
+  if ('defaultDatabase' in config && validateDatabaseConfig(config.defaultDatabase)) {
+    return 'wrapper';
+  }
+
+  if (validateDatabaseConfig(config)) {
+    return 'config';
+  }
+
+  return 'invalid';
+}
 /**
- * Crea un timestamp actual
+ * timestamp 
  */
 export function createTimestamp(date?: Date): string {
   const targetDate = date || new Date();
@@ -216,7 +335,7 @@ export function createTimestamp(date?: Date): string {
 }
 
 /**
- * Debounce function para optimizar operaciones frecuentes
+ * Debounce function
  */
 export function debounce<T extends (...args: any[]) => any>(
   func: T,

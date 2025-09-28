@@ -1,6 +1,6 @@
 {
   "name": "idb-manager",
-  "version": "1.0.8",
+  "version": "1.0.9",
   "description": "Una librería moderna y robusta para gestionar IndexedDB en el navegador",
   "main": "dist/cjs/index.js",
   "module": "dist/esm/index.js",
