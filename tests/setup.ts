@@ -14,7 +14,7 @@ class MockIDBRequest {
   onsuccess: ((event: any) => void) | null = null;
   onerror: ((event: any) => void) | null = null;
   readyState: string = 'pending';
-  protected transaction?: MockIDBTransaction;
+  transaction?: MockIDBTransaction;
 
   constructor(result?: any, error?: any, transaction?: MockIDBTransaction) {
     this.transaction = transaction;
@@ -57,27 +57,42 @@ class MockIDBIndex {
     this.unique = unique;
     this.objectStore = objectStore;
   }
+
+  get(key: any): MockIDBRequest {
+    // Buscar en el store por el índice
+    const allData = Array.from(this.objectStore.data.values());
+    const found = allData.find(item => {
+      const indexValue = Array.isArray(this.keyPath) 
+        ? this.keyPath.map(path => item[path]).join('|')
+        : item[this.keyPath as string];
+      return indexValue === key;
+    });
+    return new MockIDBRequest(found, undefined, this.objectStore.transaction);
+  }
+
+  getAll(): MockIDBRequest {
+    return new MockIDBRequest(Array.from(this.objectStore.data.values()), undefined, this.objectStore.transaction);
+  }
 }
 
 class MockIDBObjectStore {
   name: string;
   keyPath: string;
   autoIncrement: boolean;
-  public transaction?: MockIDBTransaction;
+  transaction?: MockIDBTransaction;
   private dbKey: string;
-  public indexNames: { contains: (name: string) => boolean };
+  public indexNames: ObjectStoreNamesArray;
+  private indexes: Map<string, MockIDBIndex> = new Map();
 
   constructor(name: string, options: { keyPath?: string; autoIncrement?: boolean } = {}, dbKey: string = 'default') {
     this.name = name;
     this.keyPath = options.keyPath || 'id';
     this.autoIncrement = options.autoIncrement || false;
     this.dbKey = dbKey;
-    this.indexNames = {
-      contains: (name: string) => false // Indexes not implemented in mock
-    };
+    this.indexNames = new ObjectStoreNamesArray();
   }
 
-  private get data(): Map<any, any> {
+  get data(): Map<any, any> {
     const dbStorage = globalDatabaseStorage.get(this.dbKey);
     if (!dbStorage) {
       const newStorage = new Map();
@@ -92,18 +107,59 @@ class MockIDBObjectStore {
   }
 
   add(value: any, key?: any): MockIDBRequest {
-    const id = key || value[this.keyPath];
+    let id = key;
+    if (!id) {
+      if (this.autoIncrement) {
+        id = Math.max(0, ...Array.from(this.data.keys()).filter(k => typeof k === 'number')) + 1;
+      } else {
+        id = value[this.keyPath];
+      }
+    }
+
+    // Validar que el ID no existe
     if (this.data.has(id)) {
       return new MockIDBRequest(undefined, new Error('Key already exists'), this.transaction);
     }
-    this.data.set(id, value);
-    return new MockIDBRequest(value, undefined, this.transaction);
+
+    // Validar índices únicos
+    for (const [indexName, index] of this.indexes) {
+      if (index.unique) {
+        const indexValue = Array.isArray(index.keyPath) 
+          ? index.keyPath.map(path => value[path]).join('|')
+          : value[index.keyPath as string];
+        
+        const existing = Array.from(this.data.values()).find(item => {
+          const existingValue = Array.isArray(index.keyPath)
+            ? index.keyPath.map(path => item[path]).join('|')
+            : item[index.keyPath as string];
+          return existingValue === indexValue;
+        });
+
+        if (existing) {
+          return new MockIDBRequest(undefined, new Error(`Constraint error: Index ${indexName} unique constraint violated`), this.transaction);
+        }
+      }
+    }
+
+    // Asegurar que el objeto tenga el ID
+    const finalValue = { ...value, [this.keyPath]: id };
+    this.data.set(id, finalValue);
+    return new MockIDBRequest(finalValue, undefined, this.transaction);
   }
 
   put(value: any, key?: any): MockIDBRequest {
-    const id = key || value[this.keyPath];
-    this.data.set(id, value);
-    return new MockIDBRequest(value, undefined, this.transaction);
+    let id = key;
+    if (!id) {
+      if (this.autoIncrement && !value[this.keyPath]) {
+        id = Math.max(0, ...Array.from(this.data.keys()).filter(k => typeof k === 'number')) + 1;
+      } else {
+        id = value[this.keyPath];
+      }
+    }
+
+    const finalValue = { ...value, [this.keyPath]: id };
+    this.data.set(id, finalValue);
+    return new MockIDBRequest(finalValue, undefined, this.transaction);
   }
 
   get(key: any): MockIDBRequest {
@@ -130,20 +186,25 @@ class MockIDBObjectStore {
   }
 
   createIndex(name: string, keyPath: string | string[], options?: { unique?: boolean }): MockIDBIndex {
-    // Mock index - just return a simple object
-    return {
-      name,
-      keyPath,
-      unique: options?.unique || false,
-      objectStore: this
-    } as MockIDBIndex;
+    const index = new MockIDBIndex(name, keyPath, options?.unique || false, this);
+    this.indexes.set(name, index);
+    this.indexNames.push(name);
+    return index;
+  }
+
+  index(name: string): MockIDBIndex {
+    const index = this.indexes.get(name);
+    if (!index) {
+      throw new Error(`Index '${name}' not found`);
+    }
+    return index;
   }
 }
 
 class MockIDBTransaction {
   objectStoreNames: string[];
   mode: string;
-  database: MockIDBDatabase;
+  db: MockIDBDatabase;
   stores: Map<string, MockIDBObjectStore> = new Map();
   oncomplete: ((event: any) => void) | null = null;
   onerror: ((event: any) => void) | null = null;
@@ -155,19 +216,19 @@ class MockIDBTransaction {
   constructor(storeNames: string[], mode: string, db: MockIDBDatabase) {
     this.objectStoreNames = storeNames;
     this.mode = mode;
-    this.database = db;
+    this.db = db;
     
-    // For upgrade transactions with '*', don't pre-populate stores
-    // They will be created dynamically when accessed
+    // Para transacciones de upgrade con '*', no pre-poblar stores
     if (!(storeNames.length === 1 && storeNames[0] === '*')) {
-      // Crear stores para esta transacción
       const dbKey = `${db.name}_v${db.version}`;
       storeNames.forEach(name => {
         if (db.stores.has(name)) {
-          this.stores.set(name, db.stores.get(name)!);
+          const store = db.stores.get(name)!;
+          store.setTransaction(this);
+          this.stores.set(name, store);
         } else {
-          // Create store if it doesn't exist
           const newStore = new MockIDBObjectStore(name, { keyPath: 'id' }, dbKey);
+          newStore.setTransaction(this);
           this.stores.set(name, newStore);
           db.stores.set(name, newStore);
         }
@@ -178,11 +239,11 @@ class MockIDBTransaction {
   objectStore(name: string): MockIDBObjectStore {
     let store = this.stores.get(name);
     if (!store) {
-      // During upgrade transactions, we might need to access newly created stores
+      // Durante transacciones de upgrade, podríamos necesitar acceder a stores recién creados
       if (this.mode === 'versionchange') {
-        // Try to get the store from the database
-        const dbStore = this.database?.stores.get(name);
+        const dbStore = this.db?.stores.get(name);
         if (dbStore) {
+          dbStore.setTransaction(this);
           this.stores.set(name, dbStore);
           store = dbStore;
         }
@@ -191,7 +252,6 @@ class MockIDBTransaction {
         throw new Error(`Object store '${name}' not found`);
       }
     }
-    store.transaction = this;
     return store;
   }
 
@@ -229,10 +289,7 @@ class MockIDBTransaction {
 class MockIDBDatabase {
   name: string;
   version: number;
-  objectStoreNames: ObjectStoreNamesArray = (() => {
-    const arr = new ObjectStoreNamesArray();
-    return arr;
-  })();
+  objectStoreNames: ObjectStoreNamesArray = new ObjectStoreNamesArray();
   stores: Map<string, MockIDBObjectStore> = new Map();
   onversionchange: ((event: any) => void) | null = null;
   onclose: ((event: any) => void) | null = null;
@@ -247,13 +304,16 @@ class MockIDBDatabase {
     const store = new MockIDBObjectStore(name, options, dbKey);
     this.stores.set(name, store);
     this.objectStoreNames.push(name);
-    console.log(`Object store ${name} created with indexes.`);
+    console.log(`Object store ${name} created.`);
     return store;
   }
 
   deleteObjectStore(name: string): void {
     this.stores.delete(name);
-    this.objectStoreNames = this.objectStoreNames.filter(n => n !== name) as ObjectStoreNamesArray;
+    const index = this.objectStoreNames.indexOf(name);
+    if (index > -1) {
+      this.objectStoreNames.splice(index, 1);
+    }
   }
 
   transaction(storeNames: string | string[], mode: string = 'readonly'): MockIDBTransaction {
@@ -273,20 +333,18 @@ class MockIDBOpenDBRequest extends MockIDBRequest {
   onblocked: ((event: any) => void) | null = null;
 
   constructor(name: string, version?: number) {
-    // Get or create database from factory
     const dbKey = `${name}_v${version || 1}`;
     let db = mockFactory.databases.get(dbKey);
+    
     if (!db) {
       db = new MockIDBDatabase(name, version || 1);
       mockFactory.databases.set(dbKey, db);
     }
+    
     super(db);
 
-    // Simular upgrade si es necesario
     setTimeout(() => {
       if (this.onupgradeneeded) {
-        // Create a mock transaction for the upgrade with all possible store names
-        // We'll use a special upgrade transaction that can create stores dynamically
         this.transaction = new MockIDBTransaction(['*'], 'versionchange', db);
         
         this.onupgradeneeded({
@@ -297,7 +355,6 @@ class MockIDBOpenDBRequest extends MockIDBRequest {
         });
       }
       
-      // Después del upgrade, llamar onsuccess
       setTimeout(() => {
         if (this.onsuccess) {
           this.onsuccess({ target: this });
@@ -307,14 +364,12 @@ class MockIDBOpenDBRequest extends MockIDBRequest {
   }
 }
 
-// Global storage for all mock databases to ensure data persistence
 const globalDatabaseStorage = new Map<string, Map<string, any>>();
 
 class MockIDBFactory {
   databases: Map<string, MockIDBDatabase> = new Map();
 
   open(name: string, version?: number): MockIDBOpenDBRequest {
-    // Use existing database if it exists, otherwise create new one
     const dbKey = `${name}_v${version || 1}`;
     if (!globalDatabaseStorage.has(dbKey)) {
       globalDatabaseStorage.set(dbKey, new Map());
@@ -323,14 +378,20 @@ class MockIDBFactory {
   }
 
   deleteDatabase(name: string): MockIDBRequest {
-    this.databases.delete(name);
+    // Limpiar todas las versiones de la base de datos
+    for (const [key] of this.databases) {
+      if (key.startsWith(`${name}_v`)) {
+        this.databases.delete(key);
+        globalDatabaseStorage.delete(key);
+      }
+    }
     return new MockIDBRequest(undefined);
   }
 
   getDatabases(): Promise<{ name: string; version: number }[]> {
     return Promise.resolve(
-      Array.from(this.databases.entries()).map(([name, db]) => ({
-        name,
+      Array.from(this.databases.entries()).map(([key, db]) => ({
+        name: db.name,
         version: db.version
       }))
     );
@@ -339,7 +400,6 @@ class MockIDBFactory {
 
 // Global factory instance
 const mockFactory = new MockIDBFactory();
-
 // Mock Emitter class for testing
 class MockEmitter {
   private events: { [key: string]: Function[] } = {};
@@ -383,8 +443,6 @@ class MockEmitter {
     return this.listenerCount(event) > 0;
   }
 }
-
-// Configurar mocks globales
 beforeAll(() => {
   // Mock IndexedDB
   (globalThis as any).indexedDB = mockFactory;
@@ -435,7 +493,20 @@ beforeAll(() => {
   // Mock the global emitter instance
   const mockEmitterInstance = new MockEmitter();
   
-  // Mock the emitter module
+  // Mock dinámico para las importaciones del emitter
+  const originalImport = (globalThis as any).import;
+  (globalThis as any).import = function(specifier: string) {
+    if (specifier.includes('Emitter') || specifier.includes('emitter')) {
+      return Promise.resolve({
+        emitter: mockEmitterInstance,
+        Emitter: MockEmitter,
+        default: MockEmitter
+      });
+    }
+    return originalImport ? originalImport(specifier) : Promise.resolve({});
+  };
+
+  // Mock también require para compatibilidad
   const originalRequire = (globalThis as any).require;
   (globalThis as any).require = function(id: string) {
     if (id.includes('Emitter') || id.includes('emitter')) {
@@ -450,10 +521,25 @@ beforeAll(() => {
 });
 
 // Limpiar después de cada test
-afterEach(() => {
-  // Limpiar todas las bases de datos mock
+afterEach(async () => {
+  // Cierra todas las bases de datos abiertas para liberar bloqueos.
+  // Esto es importante para que deleteDatabase funcione correctamente.
+  const dbs = await mockFactory.getDatabases();
+  for (const dbInfo of dbs) {
+    // No hay un método "closeAll" en el mock, pero la eliminación es la forma más segura de limpiar.
+    await new Promise(resolve => {
+        const req = mockFactory.deleteDatabase(dbInfo.name);
+        req.onsuccess = resolve;
+        req.onerror = resolve; // Continuar incluso si hay un error
+    });
+  }
+
+  // Limpia el almacenamiento de datos global.
   globalDatabaseStorage.clear();
-  (globalThis as any).indexedDB = new MockIDBFactory();
+
+  // Limpia el registro de bases de datos en la factory.
+  // Esto asegura que el siguiente test empiece con una factory "virgen".
+  mockFactory.databases.clear();
 });
 
 // Utilidades para tests
@@ -479,4 +565,13 @@ export const createTestData = (count: number = 5): any[] => {
   }));
 };
 
-export { MockIDBFactory, MockIDBRequest, MockIDBObjectStore, MockIDBTransaction, MockIDBDatabase, MockIDBOpenDBRequest };
+export { 
+  MockIDBFactory, 
+  MockIDBRequest, 
+  MockIDBObjectStore, 
+  MockIDBTransaction, 
+  MockIDBDatabase, 
+  MockIDBOpenDBRequest,
+  MockEmitter,
+  mockFactory
+};

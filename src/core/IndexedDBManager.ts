@@ -492,42 +492,110 @@ export class IndexedDBManager {
       });
     });
   }
+  // en la clase IndexedDBManager
 
-  async addManyToStore(storeName: string, items: Partial<DatabaseItem>[]): Promise<boolean> {
-    try {
+async addManyToStore(storeName: string, items: Partial<DatabaseItem>[]): Promise<boolean> {
+    const itemsToEmit: { actionType: EmitEvents, data: DatabaseItem }[] = [];
+
+    return this.executeTransaction(storeName, "readwrite", async (store) => {
+      // Usamos una promesa para obtener todos los datos existentes UNA SOLA VEZ
+      const allDataInStore = await new Promise<DatabaseItem[]>((resolve, reject) => {
+        const req = store.getAll();
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error);
+      });
+      const existingIds = new Set(allDataInStore.map(d => d.id));
+
+      const itemsToAdd: DatabaseItem[] = [];
+
+      // Procesamos los items para asignarles ID antes de meterlos en la transacción
       for (const item of items) {
-        await this.saveDataToStore(storeName, item);
+        let targetId: string | number;
+        let isUpdate = false;
+
+        if (isValidId(item.id)) {
+          targetId = normalizeId(item.id as string | number);
+          isUpdate = existingIds.has(targetId);
+        } else {
+          // Genera un ID único considerando los datos existentes Y los que ya hemos procesado en este lote
+          const currentDataForIdGen = [...allDataInStore, ...itemsToAdd];
+          targetId = generateNextId(currentDataForIdGen);
+        }
+        
+        const newData = { ...item, id: targetId } as DatabaseItem;
+        itemsToAdd.push(newData); // Guardamos el item procesado
+        
+        const actionType: EmitEvents = isUpdate ? "update" : "add";
+        itemsToEmit.push({ actionType, data: newData });
+      }
+
+      // Ahora ejecutamos todas las operaciones de 'put' en la base de datos
+      const promises = itemsToAdd.map(item => {
+        return new Promise<void>((resolve, reject) => {
+          const request = store.put(item);
+          request.onsuccess = () => resolve();
+          request.onerror = () => reject(request.error);
+        });
+      });
+
+      await Promise.all(promises);
+      return true;
+
+    }).then((success) => {
+      if (success) {
+        itemsToEmit.forEach(item => this.emitEvent(item.actionType, item.data));
       }
       return true;
-    } catch (error) {
-      console.error('Error adding multiple items:', error);
+    }).catch(err => {
+      console.error('Error adding multiple items:', err);
       return false;
-    }
+    });
   }
 
   async updateManyInStore(storeName: string, items: DatabaseItem[]): Promise<boolean> {
-    try {
-      for (const item of items) {
-        await this.updateDataByIdInStore(storeName, item.id, item);
-      }
+    return this.executeTransaction(storeName, "readwrite", async (store) => {
+      const promises = items.map(item => {
+        return new Promise<void>((resolve, reject) => {
+          // Asumimos que el item contiene el ID y los datos a actualizar
+          const request = store.put(item);
+          request.onsuccess = () => resolve();
+          request.onerror = () => reject(request.error);
+        });
+      });
+      await Promise.all(promises);
+      return items; // Devolvemos los items para poder emitir eventos
+
+    }).then((updatedItems) => {
+      updatedItems.forEach(item => this.emitEvent("update", item));
       return true;
-    } catch (error) {
-      console.error('Error updating multiple items:', error);
+    }).catch(err => {
+      console.error('Error updating multiple items:', err);
       return false;
-    }
+    });
   }
 
   async deleteManyFromStore(storeName: string, ids: (string | number)[]): Promise<boolean> {
-    try {
-      for (const id of ids) {
-        await this.deleteDataFromStore(storeName, id);
-      }
+    return this.executeTransaction(storeName, "readwrite", async (store) => {
+      const normalizedIds = ids.map(normalizeId);
+      const promises = normalizedIds.map(id => {
+        return new Promise<void>((resolve, reject) => {
+          const request = store.delete(id);
+          request.onsuccess = () => resolve();
+          request.onerror = () => reject(request.error);
+        });
+      });
+      await Promise.all(promises);
+      return ids; // Devolvemos los IDs para los eventos
+
+    }).then((deletedIds) => {
+      deletedIds.forEach(id => this.emitEvent("delete", id as number));
       return true;
-    } catch (error) {
-      console.error('Error deleting multiple items:', error);
+    }).catch(err => {
+      console.error('Error deleting multiple items:', err);
       return false;
-    }
+    });
   }
+
 
   async getManyFromStore(storeName: string, ids: (string | number)[]): Promise<DatabaseItem[]> {
     const results: DatabaseItem[] = [];
@@ -772,84 +840,84 @@ export class IndexedDBManager {
   async executeTransaction<T>(
     storeName: string,
     mode: IDBTransactionMode,
-    callback: (store: IDBObjectStore) => T | Promise<T>
+    callback: (store: IDBObjectStore) => Promise<T> | T
   ): Promise<T> {
-    try {
-      if (!this.db) {
-        await this.openDatabase();
-        if (!this.db) {
-          throw new Error('Database not open. Call openDatabase() first.');
+    const db = await this.openDatabase();
+
+    return new Promise<T>((resolve, reject) => {
+      if (!db.objectStoreNames.contains(storeName)) {
+        const availableStores = Array.from(db.objectStoreNames);
+        const errorMsg = `Store '${storeName}' not found. Available stores: [${availableStores.join(', ')}]`;
+        return reject(new Error(errorMsg));
+      }
+
+      let transaction: IDBTransaction;
+      try {
+        transaction = db.transaction(storeName, mode);
+      } catch (error) {
+        return reject(error);
+      }
+
+      // -- Lógica de Sincronización --
+      let callbackResult: T | undefined;
+      let callbackError: any;
+      let isCallbackDone = false;
+      let isTransactionDone = false;
+
+      // Esta función se llamará cuando cada parte (callback, transacción) termine.
+      // Solo resolverá la promesa principal cuando AMBAS hayan terminado.
+      const checkCompletion = () => {
+        if (isCallbackDone && isTransactionDone) {
+          if (callbackError) {
+            reject(callbackError);
+          } else {
+            resolve(callbackResult as T);
+          }
+        }
+      };
+      // -----------------------------
+
+      transaction.oncomplete = () => {
+        isTransactionDone = true;
+        checkCompletion(); // La transacción terminó, veamos si el callback también lo hizo.
+      };
+
+      transaction.onerror = () => {
+        reject(transaction.error);
+      };
+
+      transaction.onabort = () => {
+        reject(transaction.error || new Error("Transaction aborted"));
+      };
+
+      try {
+        // Ejecutamos el callback y nos aseguramos de que sea una promesa
+        Promise.resolve(callback(transaction.objectStore(storeName)))
+          .then(result => {
+            callbackResult = result;
+            isCallbackDone = true;
+            checkCompletion(); // El callback terminó, veamos si la transacción también lo hizo.
+          })
+          .catch(err => {
+            callbackError = err;
+            isCallbackDone = true;
+            // Si el callback falla, no esperamos a la transacción, la abortamos.
+            // El manejador onabort/onerror se encargará de rechazar la promesa principal.
+            if (transaction.abort) {
+              transaction.abort();
+            } else {
+              // Si no hay abort, rechazamos directamente.
+               checkCompletion();
+            }
+          });
+      } catch (error) {
+        // Error síncrono en el callback
+        reject(error);
+        if (transaction.abort) {
+          transaction.abort();
         }
       }
-      const db = this.db;
-
-      return new Promise<T>((resolve, reject) => {
-        if (!db || !db.objectStoreNames.contains(storeName)) {
-          console.error(`DB not open or store ${storeName} not found`);
-          console.error(`Available stores:`, db ? Array.from(db.objectStoreNames) : 'No DB');
-          return reject(
-            new Error(`DB not open or store ${storeName} not found`)
-          );
-        }
-
-        const transaction = db.transaction([storeName], mode);
-        const store = transaction.objectStore(storeName);
-        let result: T;
-        let hasResult = false;
-
-        transaction.oncomplete = () => {
-          if (hasResult) {
-            resolve(result);
-          } else {
-            reject(new Error('Transaction completed but no result was set'));
-          }
-        };
-          
-        transaction.onerror = () => {
-          console.error("IDB Transaction Error:", transaction.error);
-          reject(transaction.error);
-        };
-        
-        transaction.onabort = () => {
-          console.warn("IDB Transaction Aborted:", transaction.error);
-          reject(transaction.error || new Error("Transaction aborted"));
-        };
-
-        try {
-          const callbackResult = callback(store);
-
-          if (callbackResult instanceof Promise) {
-            callbackResult
-              .then((res) => {
-                result = res;
-                hasResult = true;
-                resolve(result);
-              })
-              .catch((err) => {
-                console.error("Error inside transaction callback promise:", err);
-                if (!transaction.error) {
-                  transaction.abort();
-                }
-                reject(err);
-              });
-          } else {
-            result = callbackResult;
-            hasResult = true;
-            resolve(result);
-            return;
-          }
-        } catch (error) {
-          console.error("Error inside transaction callback sync:", error);
-          if (!transaction.error) {
-            transaction.abort();
-          }
-          reject(error);
-        }
-      });
-    } catch (dbOpenError) {
-      console.error("Failed to open DB for transaction:", dbOpenError);
-      return Promise.reject(dbOpenError);
-    }
+    });
   }
 
   close(): void {
