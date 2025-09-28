@@ -19,24 +19,9 @@ import type {
   FilterCriteria,
   SearchTextOptions,
   DatabaseStats,
-  CreateDatabaseItem
+  CreateDatabaseItem,
+  DatabaseSchema
 } from '../types/index.js';
-
-/**
- * Configuración de esquemas para múltiples stores
- */
-export interface StoreSchema {
-  name: string;
-  keyPath?: string;
-  autoIncrement?: boolean;
-  indexes?: DatabaseIndex[];
-}
-
-export interface DatabaseSchema {
-  name: string;
-  version: number;
-  stores: StoreSchema[];
-}
 
 /**
  * Proxy para operaciones específicas de un store
@@ -127,7 +112,6 @@ export class IndexedDBManager {
   ) {
     // Handle different configuration types
     if ('stores' in dbConfig) {
-      // Es un DatabaseSchema
       this.dbSchema = dbConfig;
       this.dbConfig = {
         name: dbConfig.name,

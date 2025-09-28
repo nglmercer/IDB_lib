@@ -8,12 +8,14 @@ export type {
   ImportOptions,
   ExportOptions,
   QueryOptions,
-  TransactionMode
+  TransactionMode,
+  DatabaseSchema,
+  StoreSchema,
+  TypeValidationSchema
 } from './types/index.js';
 
 // Exportar clase principal
-export { IndexedDBManager } from './core/IndexedDBManager.js';
-
+export { IndexedDBManager,StoreProxy } from './core/IndexedDBManager.js';
 // Exportar utilidades
 export {
   normalizeId,
@@ -68,22 +70,5 @@ export const defaultManager = new IndexedDBManager(defaultConfig);
 export function createManager(config: DatabaseConfig, options?: IndexedDBManagerOptions): IndexedDBManager {
   return new IndexedDBManager(config, options);
 }
-
-/**
- * Información de la versión de la librería
- */
-export const version = '1.0.0';
-
-/**
- * Información sobre la librería
- */
-export const info = {
-  name: 'IndexedDB Manager',
-  version,
-  description: 'A comprehensive TypeScript library for managing IndexedDB operations',
-  author: 'Your Name',
-  license: 'MIT'
-};
-
 // Exportación por defecto
 export default IndexedDBManager;

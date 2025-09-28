@@ -71,7 +71,7 @@ export type UpdateDatabaseItem<T extends Record<string, DatabaseItemValue> = Rec
 /**
  * Configuración de esquema para validación de tipos
  */
-export interface DatabaseSchema<T extends Record<string, DatabaseItemValue> = Record<string, DatabaseItemValue>> {
+export interface TypeValidationSchema<T extends Record<string, DatabaseItemValue> = Record<string, DatabaseItemValue>> {
   /** Campos requeridos en el elemento */
   requiredFields: (keyof T)[];
   /** Campos opcionales en el elemento */
@@ -84,6 +84,25 @@ export interface DatabaseSchema<T extends Record<string, DatabaseItemValue> = Re
   uniqueFields?: (keyof T)[];
   /** Campos indexados para búsquedas */
   indexedFields?: (keyof T)[];
+}
+
+/**
+ * Configuración de esquemas para múltiples stores
+ */
+export interface StoreSchema {
+  name: string;
+  keyPath?: string;
+  autoIncrement?: boolean;
+  indexes?: DatabaseIndex[];
+}
+
+/**
+ * Esquema de base de datos para configuración multi-store
+ */
+export interface DatabaseSchema {
+  name: string;
+  version: number;
+  stores: StoreSchema[];
 }
 
 /**

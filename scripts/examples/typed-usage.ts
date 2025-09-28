@@ -10,7 +10,7 @@ import type {
   CreateTypedItem,
   UpdateTypedItem,
   TypedSearchResult,
-  DatabaseSchema
+  TypeValidationSchema
 } from '../../src/types/index.js';
 
 // ==========================================
@@ -101,7 +101,7 @@ const blogDbConfig: DatabaseConfig = {
  */
 function createTypedManager<T extends Record<string, any>>(
   config: DatabaseConfig,
-  schema?: DatabaseSchema<T>
+  schema?: TypeValidationSchema<T>
 ): IndexedDBManager {
   const manager = new IndexedDBManager(config);
 
@@ -124,7 +124,7 @@ function createTypedManager<T extends Record<string, any>>(
  */
 function isTypedItem<T extends Record<string, any>>(
   item: any,
-  schema: DatabaseSchema<T>
+  schema: TypeValidationSchema<T>
 ): item is TypedDatabaseItem<T> {
   if (!item || typeof item !== 'object') return false;
 
@@ -141,7 +141,7 @@ function isTypedItem<T extends Record<string, any>>(
  */
 async function getTypedAllData<T extends Record<string, any>>(
   manager: IndexedDBManager,
-  schema: DatabaseSchema<T>
+  schema: TypeValidationSchema<T>
 ): Promise<TypedDatabaseItem<T>[]> {
   const allData = await manager.getAll();
 
@@ -158,7 +158,7 @@ async function getTypedAllData<T extends Record<string, any>>(
  * Ejemplo 1: Trabajar con usuarios tipados
  */
 export async function userExample() {
-  const userSchema: DatabaseSchema<UserData> = {
+  const userSchema: TypeValidationSchema<UserData> = {
     requiredFields: ['name', 'email', 'age', 'active', 'role'],
     optionalFields: ['tags', 'profile'],
     uniqueFields: ['email'],
@@ -218,7 +218,7 @@ export async function userExample() {
  * Ejemplo 2: Trabajar con productos tipados
  */
 export async function productExample() {
-  const productSchema: DatabaseSchema<ProductData> = {
+  const productSchema: TypeValidationSchema<ProductData> = {
     requiredFields: ['name', 'price', 'category', 'inStock', 'images', 'metadata'],
     optionalFields: ['description'],
     uniqueFields: [],
@@ -310,7 +310,7 @@ export async function searchExample() {
 export class TypedDatabaseManager<T extends Record<string, any>> {
   constructor(
     private manager: IndexedDBManager,
-    private schema: DatabaseSchema<T>
+    private schema: TypeValidationSchema<T>
   ) {}
 
   async getAllTyped(): Promise<TypedDatabaseItem<T>[]> {

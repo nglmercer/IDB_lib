@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from 'bun:test';
 import '../setup.js';
-import { IndexedDBManager, DatabaseSchema } from '../../src/core/IndexedDBManager.js';
-import type { DatabaseConfig, DatabaseItem } from '../../src/types/index.js';
+import { IndexedDBManager } from '../../src/core/IndexedDBManager.js';
+import type { DatabaseConfig, DatabaseItem,DatabaseSchema } from '../../src/types/index.js';
 import { waitForAsync, createTestData } from '../setup.js';
 
 describe('Multi-Store Operations Integration', () => {
