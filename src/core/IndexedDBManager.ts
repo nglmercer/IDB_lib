@@ -3,7 +3,7 @@ import {
   normalizeId,
   isValidId,
   generateNextId,
-  validateDatabaseConfig,
+  validateAnyDatabaseConfig,
   createTimestamp
 } from '../utils/helpers.js';
 import type {
@@ -122,7 +122,7 @@ export class IndexedDBManager {
       // Handle both direct DatabaseConfig and options object with defaultDatabase
       const actualConfig = 'defaultDatabase' in dbConfig ? dbConfig.defaultDatabase : dbConfig;
       
-      if (!validateDatabaseConfig(actualConfig)) {
+      if (!validateAnyDatabaseConfig(actualConfig)) {
         throw new Error('Invalid database configuration provided');
       }
       
@@ -189,7 +189,7 @@ export class IndexedDBManager {
   }
 
   async setDatabase(config: DatabaseConfig): Promise<void> {
-    if (!validateDatabaseConfig(config)) {
+    if (!validateAnyDatabaseConfig(config)) {
       throw new Error('Invalid database configuration provided');
     }
     
@@ -787,7 +787,7 @@ export class IndexedDBManager {
     if (this.db) return this.db;
 
     return new Promise<IDBDatabase>((resolve, reject) => {
-      if (!this.dbSchema && !validateDatabaseConfig(this.dbConfig)) {
+      if (!this.dbSchema && !validateAnyDatabaseConfig(this.dbConfig)) {
         reject(new Error('Invalid database configuration'));
         return;
       }
