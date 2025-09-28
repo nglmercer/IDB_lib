@@ -83,6 +83,7 @@ class MockIDBObjectStore {
   private dbKey: string;
   public indexNames: ObjectStoreNamesArray;
   private indexes: Map<string, MockIDBIndex> = new Map();
+  private nextId: number = 1;
 
   constructor(name: string, options: { keyPath?: string; autoIncrement?: boolean } = {}, dbKey: string = 'default') {
     this.name = name;
@@ -150,10 +151,11 @@ class MockIDBObjectStore {
   put(value: any, key?: any): MockIDBRequest {
     let id = key;
     if (!id) {
-      if (this.autoIncrement && !value[this.keyPath]) {
-        id = Math.max(0, ...Array.from(this.data.keys()).filter(k => typeof k === 'number')) + 1;
-      } else {
+      if (value[this.keyPath]) {
         id = value[this.keyPath];
+      } else {
+        // Use the nextId counter to ensure unique IDs
+        id = this.nextId++;
       }
     }
 
@@ -300,11 +302,10 @@ class MockIDBDatabase {
   }
 
   createObjectStore(name: string, options?: { keyPath?: string; autoIncrement?: boolean }): MockIDBObjectStore {
-    const dbKey = `${this.name}_v${this.version}`;
+    const dbKey = `${this.name}_v${this.version}_${name}`;
     const store = new MockIDBObjectStore(name, options, dbKey);
     this.stores.set(name, store);
     this.objectStoreNames.push(name);
-    console.log(`Object store ${name} created.`);
     return store;
   }
 

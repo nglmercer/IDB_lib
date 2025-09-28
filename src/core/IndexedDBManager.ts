@@ -263,16 +263,16 @@ export class IndexedDBManager {
       return Promise.reject(new Error("Invalid data: must be an object."));
     }
 
+    const hasExplicitId = isValidId(data.id);
     let targetId: string | number;
     let isUpdate = false;
 
-    const hasExplicitId = isValidId(data.id);
     if (hasExplicitId) {
       targetId = normalizeId(data.id as string | number);
       isUpdate = await this.idExistsInStore(storeName, targetId);
     } else {
-      const allData = await this.getAllDataFromStore(storeName);
-      targetId = generateNextId(allData);
+      // Use timestamp-based ID for better concurrency handling
+      targetId = Date.now() + Math.floor(Math.random() * 1000);
       isUpdate = false;
     }
     
@@ -436,11 +436,54 @@ export class IndexedDBManager {
   async searchDataInStore(storeName: string, query: Partial<DatabaseItem>, options: SearchOptions = {}): Promise<SearchResult> {
     const allData = await this.getAllDataFromStore(storeName);
     
+    // If query is empty, return all data
+    if (Object.keys(query).length === 0) {
+      let filteredData = [...allData];
+      
+      if (options.orderBy) {
+        filteredData.sort((a, b) => {
+          const aVal = a[options.orderBy!];
+          const bVal = b[options.orderBy!];
+          const direction = options.orderDirection === 'desc' ? -1 : 1;
+
+          if (aVal == null && bVal == null) return 0;
+          if (aVal == null) return 1 * direction;
+          if (bVal == null) return -1 * direction;
+          if (aVal < bVal) return -1 * direction;
+          if (aVal > bVal) return 1 * direction;
+          return 0;
+        });
+      }
+
+      const total = filteredData.length;
+      
+      if (options.limit || options.offset) {
+        const offset = options.offset || 0;
+        const limit = options.limit || total;
+        filteredData = filteredData.slice(offset, offset + limit);
+      }
+
+      const result: SearchResult<DatabaseItem> = {
+        items: filteredData,
+        total
+      };
+      
+      if (options.offset && options.limit) {
+        result.page = Math.floor(options.offset / options.limit) + 1;
+      }
+      
+      if (options.limit) {
+        result.limit = options.limit;
+      }
+      
+      return result;
+    }
+    
+    // Filter data based on query criteria
     let filteredData = allData.filter(item => {
       return Object.entries(query).every(([key, value]) => {
-        if (typeof value === 'string') {
-          return String(item[key]).toLowerCase().includes(value.toLowerCase());
-        }
+        if (value === undefined || value === null) return true;
+        // For exact matching, use strict equality
         return item[key] === value;
       });
     });
@@ -488,27 +531,28 @@ export class IndexedDBManager {
     const allData = await this.getAllDataFromStore(storeName);
     return allData.filter(item => {
       return Object.entries(criteria).every(([key, value]) => {
+        if (value === undefined || value === null) return true;
         return item[key] === value;
       });
     });
   }
   // en la clase IndexedDBManager
 
-async addManyToStore(storeName: string, items: Partial<DatabaseItem>[]): Promise<boolean> {
+  async addManyToStore(storeName: string, items: Partial<DatabaseItem>[]): Promise<boolean> {
     const itemsToEmit: { actionType: EmitEvents, data: DatabaseItem }[] = [];
 
     return this.executeTransaction(storeName, "readwrite", async (store) => {
-      // Usamos una promesa para obtener todos los datos existentes UNA SOLA VEZ
+      // Get all existing data within the transaction
       const allDataInStore = await new Promise<DatabaseItem[]>((resolve, reject) => {
         const req = store.getAll();
         req.onsuccess = () => resolve(req.result);
         req.onerror = () => reject(req.error);
       });
-      const existingIds = new Set(allDataInStore.map(d => d.id));
 
+      const existingIds = new Set(allDataInStore.map(d => d.id));
       const itemsToAdd: DatabaseItem[] = [];
 
-      // Procesamos los items para asignarles ID antes de meterlos en la transacción
+      // Process all items and assign IDs within the transaction scope
       for (const item of items) {
         let targetId: string | number;
         let isUpdate = false;
@@ -517,19 +561,19 @@ async addManyToStore(storeName: string, items: Partial<DatabaseItem>[]): Promise
           targetId = normalizeId(item.id as string | number);
           isUpdate = existingIds.has(targetId);
         } else {
-          // Genera un ID único considerando los datos existentes Y los que ya hemos procesado en este lote
+          // Generate unique ID considering existing data and items already processed in this batch
           const currentDataForIdGen = [...allDataInStore, ...itemsToAdd];
           targetId = generateNextId(currentDataForIdGen);
         }
-        
+
         const newData = { ...item, id: targetId } as DatabaseItem;
-        itemsToAdd.push(newData); // Guardamos el item procesado
-        
+        itemsToAdd.push(newData);
+
         const actionType: EmitEvents = isUpdate ? "update" : "add";
         itemsToEmit.push({ actionType, data: newData });
       }
 
-      // Ahora ejecutamos todas las operaciones de 'put' en la base de datos
+      // Execute all put operations
       const promises = itemsToAdd.map(item => {
         return new Promise<void>((resolve, reject) => {
           const request = store.put(item);
@@ -553,20 +597,23 @@ async addManyToStore(storeName: string, items: Partial<DatabaseItem>[]): Promise
   }
 
   async updateManyInStore(storeName: string, items: DatabaseItem[]): Promise<boolean> {
+    const itemsToEmit = [...items]; // Copy items for event emission
+
     return this.executeTransaction(storeName, "readwrite", async (store) => {
       const promises = items.map(item => {
         return new Promise<void>((resolve, reject) => {
-          // Asumimos que el item contiene el ID y los datos a actualizar
           const request = store.put(item);
           request.onsuccess = () => resolve();
           request.onerror = () => reject(request.error);
         });
       });
       await Promise.all(promises);
-      return items; // Devolvemos los items para poder emitir eventos
+      return true;
 
-    }).then((updatedItems) => {
-      updatedItems.forEach(item => this.emitEvent("update", item));
+    }).then((success) => {
+      if (success) {
+        itemsToEmit.forEach(item => this.emitEvent("update", item));
+      }
       return true;
     }).catch(err => {
       console.error('Error updating multiple items:', err);
@@ -575,6 +622,8 @@ async addManyToStore(storeName: string, items: Partial<DatabaseItem>[]): Promise
   }
 
   async deleteManyFromStore(storeName: string, ids: (string | number)[]): Promise<boolean> {
+    const idsToEmit = ids.map(normalizeId); // Copy normalized IDs for event emission
+
     return this.executeTransaction(storeName, "readwrite", async (store) => {
       const normalizedIds = ids.map(normalizeId);
       const promises = normalizedIds.map(id => {
@@ -585,10 +634,12 @@ async addManyToStore(storeName: string, items: Partial<DatabaseItem>[]): Promise
         });
       });
       await Promise.all(promises);
-      return ids; // Devolvemos los IDs para los eventos
+      return true;
 
-    }).then((deletedIds) => {
-      deletedIds.forEach(id => this.emitEvent("delete", id as number));
+    }).then((success) => {
+      if (success) {
+        idsToEmit.forEach(id => this.emitEvent("delete", id as number));
+      }
       return true;
     }).catch(err => {
       console.error('Error deleting multiple items:', err);
@@ -765,15 +816,12 @@ async addManyToStore(storeName: string, items: Partial<DatabaseItem>[]): Promise
                         objectStore.createIndex(index.name, index.keyPath, {
                           unique: index.unique,
                         });
-                        console.log(`Index ${index.name} created for store ${storeConfig.name}.`);
                       }
                     } catch (indexError) {
                       console.error(`Error creating index ${index.name}:`, indexError);
                     }
                   });
                 }
-                
-                console.log(`Object store ${storeConfig.name} created with schema.`);
               }
             });
           } else {
@@ -796,8 +844,6 @@ async addManyToStore(storeName: string, items: Partial<DatabaseItem>[]): Promise
                   console.error(`Error creating index ${index.name}:`, indexError);
                 }
               });
-              
-              console.log(`Object store ${this.dbConfig.store} created with indexes.`);
             }
           }
         } catch (upgradeError) {
@@ -808,7 +854,6 @@ async addManyToStore(storeName: string, items: Partial<DatabaseItem>[]): Promise
       request.onsuccess = () => {
         try {
           this.db = request.result;
-          console.log(`Database ${this.dbConfig.name} opened successfully`);
           resolve(this.db);
         } catch (successError) {
           console.error('Error in onsuccess handler:', successError);

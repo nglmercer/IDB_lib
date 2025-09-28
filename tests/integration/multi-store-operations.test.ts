@@ -7,10 +7,12 @@ import { waitForAsync, createTestData } from '../setup.js';
 describe('Multi-Store Operations Integration', () => {
   let manager: IndexedDBManager;
   let appSchema: DatabaseSchema;
+  let dbName: string;
 
   beforeEach(async () => {
+    dbName = `MultiStoreTestApp_${Date.now()}_${Math.random()}`;
     appSchema = {
-      name: 'MultiStoreTestApp',
+      name: dbName,
       version: 1,
       stores: [
         {
@@ -75,7 +77,7 @@ describe('Multi-Store Operations Integration', () => {
 
     it('debería mantener la configuración del esquema', () => {
       const currentConfig = manager.getCurrentDatabase();
-      expect(currentConfig.name).toBe('MultiStoreTestApp');
+      expect(currentConfig.name).toBe(dbName);
       expect(currentConfig.version).toBe(1);
       expect(currentConfig.store).toBe('users'); // Primer store por defecto
     });
@@ -323,7 +325,7 @@ describe('Multi-Store Operations Integration', () => {
       const usersStats = await usersStore.getStats();
       expect(usersStats.totalRecords).toBe(3);
       expect(usersStats.storeName).toBe('users');
-      expect(usersStats.databaseName).toBe('MultiStoreTestApp');
+      expect(usersStats.databaseName).toBe(dbName);
 
       const postsStats = await postsStore.getStats();
       expect(postsStats.totalRecords).toBe(3);
