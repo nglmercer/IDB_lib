@@ -27,36 +27,10 @@ bun add idb-manager
 ```
 
 ### CDN
-- not implemented yet
+
 ```html
 <script src=" https://cdn.jsdelivr.net/npm/idb-manager@1.0.5/dist/cdn/index.min.js "></script>
 ```
-
-## 🛠️ Plan de Desarrollo
-
-### Fase 1: Configuración del Proyecto ⏳
-- [x] Estructura de carpetas
-- [ ] Configuración de Bun (package.json, tsconfig.json)
-- [ ] Refactorización del código principal
-- [ ] Eliminación de dependencias inexistentes
-
-### Fase 2: Testing 🧪
-- [ ] Configuración de Bun test
-- [ ] Tests unitarios para IndexedDBManager
-- [ ] Tests de integración
-- [ ] Coverage reports
-
-### Fase 3: Build System 🔨
-- [ ] Build para browser (ES modules)
-- [ ] Build para CDN (UMD/IIFE)
-- [ ] Minificación y optimización
-- [ ] Generación de tipos (.d.ts)
-
-### Fase 4: Distribución 📦
-- [ ] Configuración de NPM publishing
-- [ ] CDN setup
-- [ ] Versionado automático
-- [ ] CI/CD pipeline
 
 ## 🏗️ Estructura del Proyecto
 
@@ -122,20 +96,13 @@ const dbManager2 = new IndexedDBManager({
 
 ```typescript
 // Guardar datos (crear o actualizar)
-const user = await dbManager.saveData({
+const user = await dbManager.save({
   name: 'Juan Pérez',
   email: 'juan@example.com'
 });
 
-// Métodos alternativos para guardar
-const user2 = await dbManager.add({
-  name: 'María García',
-  email: 'maria@example.com'
-});
-
 // Obtener por ID
-const userData = await dbManager.getDataById(user.id);
-const userData2 = await dbManager.get(user.id); // Método alternativo
+const userData = await dbManager.get(user.id);
 
 // Actualizar por ID
 const updated = await dbManager.updateDataById(user.id, {
@@ -184,8 +151,7 @@ const multipleUsers = await dbManager.getMany([1, 2, 3]);
 
 ```typescript
 // Obtener todos los datos
-const allUsers = await dbManager.getAllData();
-const allUsers2 = await dbManager.getAll(); // Método alternativo
+const allUsers = await dbManager.getAll();
 
 // Contar elementos
 const totalUsers = await dbManager.count();
@@ -235,8 +201,7 @@ dbManager.setDefaultIndexes([
 ]);
 
 // Limpiar toda la base de datos
-await dbManager.clearDatabase();
-await dbManager.clear(); // Método alternativo
+await dbManager.clear();
 
 // Obtener estadísticas
 const stats = await dbManager.getStats();
@@ -282,7 +247,7 @@ dbManager.emitterInstance.on('save', (data) => {
 
 ```typescript
 try {
-  const user = await dbManager.saveData({
+  const user = await dbManager.save({
     name: 'Test User',
     email: 'test@example.com'
   });
@@ -302,14 +267,15 @@ dbManager.emitterInstance.on('error', (error) => {
 ### Métodos de Datos
 | Método | Descripción | Retorna |
 |--------|-------------|----------|
-| `saveData(data)` | Guarda o actualiza un elemento | `Promise<DatabaseItem>` |
-| `add(data)` | Alias para saveData | `Promise<DatabaseItem>` |
-| `getDataById(id)` | Obtiene un elemento por ID | `Promise<DatabaseItem \| null>` |
-| `get(id)` | Alias para getDataById | `Promise<DatabaseItem \| null>` |
+| `save(data)` | Guarda o actualiza un elemento | `Promise<DatabaseItem>` |
+| `saveData(data)` | Alias para save | `Promise<DatabaseItem>` |
+| `add(data)` | Alias para save | `Promise<DatabaseItem>` |
+| `get(id)` | Obtiene un elemento por ID | `Promise<DatabaseItem \| null>` |
+| `getDataById(id)` | Alias para get | `Promise<DatabaseItem \| null>` |
 | `updateDataById(id, data)` | Actualiza un elemento por ID | `Promise<DatabaseItem \| null>` |
 | `update(item)` | Actualiza un elemento completo | `Promise<DatabaseItem>` |
-| `deleteData(id)` | Elimina un elemento por ID | `Promise<string \| number>` |
-| `delete(id)` | Alias para deleteData | `Promise<boolean>` |
+| `delete(id)` | Elimina un elemento por ID | `Promise<boolean>` |
+| `deleteData(id)` | Alias para delete | `Promise<string \| number>` |
 
 ### Métodos de Lote
 | Método | Descripción | Retorna |
@@ -322,8 +288,8 @@ dbManager.emitterInstance.on('error', (error) => {
 ### Métodos de Consulta
 | Método | Descripción | Retorna |
 |--------|-------------|----------|
-| `getAllData()` | Obtiene todos los elementos | `Promise<DatabaseItem[]>` |
-| `getAll()` | Alias para getAllData | `Promise<DatabaseItem[]>` |
+| `getAll()` | Obtiene todos los elementos | `Promise<DatabaseItem[]>` |
+| `getAllData()` | Alias para getAll | `Promise<DatabaseItem[]>` |
 | `count()` | Cuenta total de elementos | `Promise<number>` |
 | `search(query, options)` | Búsqueda por texto | `Promise<DatabaseItem[]>` |
 | `filter(criteria)` | Filtra por criterios | `Promise<DatabaseItem[]>` |
@@ -335,8 +301,8 @@ dbManager.emitterInstance.on('error', (error) => {
 | `setDatabase(config)` | Cambia configuración de BD | `Promise<void>` |
 | `getCurrentDatabase()` | Obtiene configuración actual | `DatabaseConfig` |
 | `setDefaultIndexes(indexes)` | Configura índices | `void` |
-| `clearDatabase()` | Limpia toda la BD | `Promise<void>` |
-| `clear()` | Alias para clearDatabase | `Promise<void>` |
+| `clear()` | Limpia toda la BD | `Promise<void>` |
+| `clearDatabase()` | Alias para clear | `Promise<void>` |
 | `getStats()` | Obtiene estadísticas | `Promise<Stats>` |
 | `close()` | Cierra conexión | `void` |
 

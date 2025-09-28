@@ -23,9 +23,7 @@ import type {
   DatabaseSchema
 } from '../types/index.js';
 
-/**
- * Proxy para operaciones específicas de un store
- */
+
 export class StoreProxy {
   constructor(
     private manager: IndexedDBManager,
@@ -95,9 +93,6 @@ export class StoreProxy {
   }
 }
 
-/**
- * Gestor principal de IndexedDB con funcionalidades avanzadas y soporte multi-store
- */
 export class IndexedDBManager {
   private dbConfig: DatabaseConfig;
   private dbSchema: DatabaseSchema | null = null;
@@ -110,7 +105,6 @@ export class IndexedDBManager {
     dbConfig: DatabaseConfig | { defaultDatabase: DatabaseConfig } | DatabaseSchema, 
     options?: IndexedDBManagerOptions
   ) {
-    // Handle different configuration types
     if ('stores' in dbConfig) {
       this.dbSchema = dbConfig;
       this.dbConfig = {
@@ -119,7 +113,6 @@ export class IndexedDBManager {
         store: dbConfig.stores[0]?.name || 'default'
       };
     } else {
-      // Handle both direct DatabaseConfig and options object with defaultDatabase
       const actualConfig = 'defaultDatabase' in dbConfig ? dbConfig.defaultDatabase : dbConfig;
       
       if (!validateAnyDatabaseConfig(actualConfig)) {
@@ -129,7 +122,6 @@ export class IndexedDBManager {
       this.dbConfig = actualConfig;
     }
     
-    // Inicializar el emitter (usar mock en tests)
     this.emitterInstance = emitter;
     this.db = null;
     this.defaultIndexes = [];
@@ -141,18 +133,13 @@ export class IndexedDBManager {
     }
   }
 
-  /**
-   * Inicializa la base de datos con un esquema completo
-   */
   static async initializeWithSchema(schema: DatabaseSchema, options?: IndexedDBManagerOptions): Promise<IndexedDBManager> {
     const manager = new IndexedDBManager(schema, { ...options, autoInit: false });
     await manager.openDatabase();
     return manager;
   }
 
-  /**
-   * Obtiene un proxy para operaciones específicas de un store
-   */
+
   store(storeName: string): StoreProxy {
     if (!this.storeProxies.has(storeName)) {
       this.storeProxies.set(storeName, new StoreProxy(this, storeName));
@@ -160,9 +147,6 @@ export class IndexedDBManager {
     return this.storeProxies.get(storeName)!;
   }
 
-  /**
-   * Configura un esquema completo de base de datos
-   */
   setSchema(schema: DatabaseSchema): void {
     this.dbSchema = schema;
     this.dbConfig = {
@@ -171,10 +155,6 @@ export class IndexedDBManager {
       store: schema.stores[0]?.name || 'default'
     };
   }
-
-  // ==========================================
-  // MÉTODOS EXISTENTES (RETROCOMPATIBILIDAD)
-  // ==========================================
 
   setEmitterInstance(emitterInstance: Emitter): void {
     this.emitterInstance = emitterInstance;
@@ -238,10 +218,6 @@ export class IndexedDBManager {
     return this.deleteManyFromStore(this.dbConfig.store, ids);
   }
 
-  // ==========================================
-  // MÉTODOS MULTI-STORE (NUEVOS)
-  // ==========================================
-
   async saveDataToStore(storeName: string, data: Partial<DatabaseItem>): Promise<DatabaseItem> {
     if (typeof data !== "object" || data === null) {
       return Promise.reject(new Error("Invalid data: must be an object."));
@@ -255,7 +231,6 @@ export class IndexedDBManager {
       targetId = normalizeId(data.id as string | number);
       isUpdate = await this.idExistsInStore(storeName, targetId);
     } else {
-      // Use timestamp-based ID for better concurrency handling
       targetId = Date.now() + Math.floor(Math.random() * 1000);
       isUpdate = false;
     }
@@ -463,25 +438,20 @@ export class IndexedDBManager {
       return result;
     }
     
-    // Filter data based on query criteria
     let filteredData = allData.filter(item => {
       return Object.entries(query).every(([key, value]) => {
         if (value === undefined || value === null) return true;
         if (typeof value === 'string') {
           const fieldValue = String(item[key] || '');
           
-          // Check if this looks like a domain search (contains dots)
           const isDomainSearch = value.includes('.');
           
-          // Check if this looks like a partial search (short strings that don't match common exact values)
           const commonExactValues = ['active', 'inactive', 'pending', 'draft', 'published', 'archived'];
           const isLikelyExactValue = commonExactValues.includes(value.toLowerCase());
           
           if (isDomainSearch && !isLikelyExactValue) {
-            // Partial matching for domain searches like 'test.com'
             return fieldValue.toLowerCase().includes(value.toLowerCase());
           } else {
-            // Exact matching for status values and other exact criteria
             return fieldValue.toLowerCase() === value.toLowerCase();
           }
         }
@@ -541,13 +511,11 @@ export class IndexedDBManager {
       });
     });
   }
-  // en la clase IndexedDBManager
 
   async addManyToStore(storeName: string, items: Partial<DatabaseItem>[]): Promise<boolean> {
     const itemsToEmit: { actionType: EmitEvents, data: DatabaseItem }[] = [];
 
     return this.executeTransaction(storeName, "readwrite", async (store) => {
-      // Get all existing data within the transaction
       const allDataInStore = await new Promise<DatabaseItem[]>((resolve, reject) => {
         const req = store.getAll();
         req.onsuccess = () => resolve(req.result);
@@ -557,7 +525,6 @@ export class IndexedDBManager {
       const existingIds = new Set(allDataInStore.map(d => d.id));
       const itemsToAdd: DatabaseItem[] = [];
 
-      // Process all items and assign IDs within the transaction scope
       for (const item of items) {
         let targetId: string | number;
         let isUpdate = false;
@@ -566,7 +533,7 @@ export class IndexedDBManager {
           targetId = normalizeId(item.id as string | number);
           isUpdate = existingIds.has(targetId);
         } else {
-          // Generate unique ID considering existing data and items already processed in this batch
+          // Generate unique ID
           const currentDataForIdGen = [...allDataInStore, ...itemsToAdd];
           targetId = generateNextId(currentDataForIdGen);
         }
@@ -693,10 +660,6 @@ export class IndexedDBManager {
     );
   }
 
-  // ==========================================
-  // MÉTODOS EXISTENTES (MANTENIDOS PARA COMPATIBILIDAD)
-  // ==========================================
-
   async idExists(id: string | number): Promise<boolean> {
     return this.idExistsInStore(this.dbConfig.store, id);
   }
@@ -778,10 +741,6 @@ export class IndexedDBManager {
   async getStats(): Promise<DatabaseStats> {
     return this.getStatsForStore(this.dbConfig.store);
   }
-
-  // ==========================================
-  // MÉTODOS DE INFRAESTRUCTURA
-  // ==========================================
 
   async openDatabase(): Promise<IDBDatabase> {
     if (this.db) return this.db;
@@ -907,15 +866,10 @@ export class IndexedDBManager {
       } catch (error) {
         return reject(error);
       }
-
-      // -- Lógica de Sincronización --
       let callbackResult: T | undefined;
       let callbackError: any;
       let isCallbackDone = false;
       let isTransactionDone = false;
-
-      // Esta función se llamará cuando cada parte (callback, transacción) termine.
-      // Solo resolverá la promesa principal cuando AMBAS hayan terminado.
       const checkCompletion = () => {
         if (isCallbackDone && isTransactionDone) {
           if (callbackError) {
@@ -925,11 +879,10 @@ export class IndexedDBManager {
           }
         }
       };
-      // -----------------------------
 
       transaction.oncomplete = () => {
         isTransactionDone = true;
-        checkCompletion(); // La transacción terminó, veamos si el callback también lo hizo.
+        checkCompletion();
       };
 
       transaction.onerror = () => {
@@ -937,31 +890,26 @@ export class IndexedDBManager {
       };
 
       transaction.onabort = () => {
-        reject(transaction.error || new Error("Transaction aborted"));
+        reject(transaction);
       };
 
       try {
-        // Ejecutamos el callback y nos aseguramos de que sea una promesa
         Promise.resolve(callback(transaction.objectStore(storeName)))
           .then(result => {
             callbackResult = result;
             isCallbackDone = true;
-            checkCompletion(); // El callback terminó, veamos si la transacción también lo hizo.
+            checkCompletion();
           })
           .catch(err => {
             callbackError = err;
             isCallbackDone = true;
-            // Si el callback falla, no esperamos a la transacción, la abortamos.
-            // El manejador onabort/onerror se encargará de rechazar la promesa principal.
             if (transaction.abort) {
               transaction.abort();
             } else {
-              // Si no hay abort, rechazamos directamente.
                checkCompletion();
             }
           });
       } catch (error) {
-        // Error síncrono en el callback
         reject(error);
         if (transaction.abort) {
           transaction.abort();
