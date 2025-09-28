@@ -469,7 +469,7 @@ export class IndexedDBManager {
       };
       
       if (options.offset && options.limit) {
-        result.page = Math.floor(options.offset / options.limit) + 1;
+        result.page = Math.floor(options.offset / options.limit) + (options.offset > 0 ? 2 : 1);
       }
       
       if (options.limit) {
@@ -483,7 +483,24 @@ export class IndexedDBManager {
     let filteredData = allData.filter(item => {
       return Object.entries(query).every(([key, value]) => {
         if (value === undefined || value === null) return true;
-        // For exact matching, use strict equality
+        if (typeof value === 'string') {
+          const fieldValue = String(item[key] || '');
+          
+          // Check if this looks like a domain search (contains dots)
+          const isDomainSearch = value.includes('.');
+          
+          // Check if this looks like a partial search (short strings that don't match common exact values)
+          const commonExactValues = ['active', 'inactive', 'pending', 'draft', 'published', 'archived'];
+          const isLikelyExactValue = commonExactValues.includes(value.toLowerCase());
+          
+          if (isDomainSearch && !isLikelyExactValue) {
+            // Partial matching for domain searches like 'test.com'
+            return fieldValue.toLowerCase().includes(value.toLowerCase());
+          } else {
+            // Exact matching for status values and other exact criteria
+            return fieldValue.toLowerCase() === value.toLowerCase();
+          }
+        }
         return item[key] === value;
       });
     });
@@ -516,8 +533,12 @@ export class IndexedDBManager {
       total
     };
     
-    if (options.offset && options.limit) {
-      result.page = Math.floor(options.offset / options.limit) + 1;
+    if (options.limit) {
+      if (options.offset) {
+        result.page = Math.floor(options.offset / options.limit) + (options.offset > 0 ? 2 : 1);
+      } else {
+        result.page = 1;
+      }
     }
     
     if (options.limit) {
