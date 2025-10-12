@@ -4,26 +4,43 @@ import type { DatabaseConfig, DatabaseItem,DatabaseIndex,DatabaseSchema,StoreSch
  * Normaliza un ID para uso consistente en IndexedDB
  * Maneja correctamente el ID 0 y convierte strings numéricos
  */
-export function normalizeId(id: string | number): string | number {
+export function normalizeId(id: string | number | Date | unknown): string | number {
+  if (id === null || id === undefined){
+    throw new Error("ID no puede ser null o undefined");
+  }
+
+  if (typeof id === "boolean") return String(id);
+
+  if (typeof id === "symbol") return id.toString();
+
+  if (typeof id === "bigint") return id.toString();
+
+  if (id instanceof Date) {
+    const time = id.getTime();
+    return isNaN(time) ? String(id) : time;
+  }
+
   if (typeof id === "string") {
     const trimmedId = id.trim();
-    if (trimmedId === "") return id; // String vacío permanece como string
-    
+    if (trimmedId === "") return trimmedId;
+
+    if (/^0\d+$/.test(trimmedId)) return trimmedId; // conservar ceros
+
     const numValue = Number(trimmedId);
     if (!isNaN(numValue)) {
-      // Es un número válido, verificar si es seguro como number
       return numValue > Number.MAX_SAFE_INTEGER ? trimmedId : numValue;
     }
-    return trimmedId; // No es un número, mantener como string
+
+    return trimmedId;
   }
 
   if (typeof id === "number") {
     return id > Number.MAX_SAFE_INTEGER ? String(id) : id;
   }
 
-  return id;
+  // fallback: objetos, arrays, etc.
+  return String(id);
 }
-
 /**
  * Valida si un ID es válido para uso en IndexedDB
  */

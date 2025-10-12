@@ -1,3 +1,4 @@
+import type { StorageAdapter } from '../adapters/types.js';
 /**
  * Configuración de la base de datos IndexedDB
  */
@@ -190,6 +191,7 @@ export interface IndexedDBManagerOptions {
   enableEvents?: boolean;
   autoInit?: boolean;
   debug?: boolean;
+  adapter?: StorageAdapter;
 }
 
 /**

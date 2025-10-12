@@ -30,9 +30,9 @@ describe('Helpers', () => {
       expect(normalizeId('123abc')).toBe('123abc');
     });
 
-    it('debería manejar valores null/undefined', () => {
-      expect(normalizeId(null)).toBeNull();
-      expect(normalizeId(undefined)).toBeUndefined();
+    it('debería lanzar error al recibir valores null/undefined', () => {
+      expect(() => normalizeId(null)).toThrow('ID no puede ser null o undefined');
+      expect(() => normalizeId(undefined)).toThrow('ID no puede ser null o undefined');
     });
   });
 

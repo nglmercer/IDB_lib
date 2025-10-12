@@ -22,6 +22,8 @@ import type {
   CreateDatabaseItem,
   DatabaseSchema
 } from '../types/index.js';
+import type { StorageAdapter } from '../adapters/types.js';
+import { BrowserAdapter } from '../adapters/browser.js';
 
 export class SchemaManager {
   private schemas: Map<string, DatabaseSchema> = new Map();
@@ -55,10 +57,7 @@ export class StoreProxy {
   private _storeName: string;
   private _instanceId: string;
 
-  constructor(
-    manager: IndexedDBManager,
-    storeName: string
-  ) {
+  constructor(manager: IndexedDBManager, storeName: string) {
     this._manager = manager;
     this._storeName = storeName;
     this._instanceId = `${storeName}-${Date.now()}-${Math.random()}`;
@@ -73,8 +72,7 @@ export class StoreProxy {
   }
 
   async add(data: Partial<DatabaseItem>): Promise<DatabaseItem> {
-    const cleanData = data;
-    return this._manager.saveDataToStore(this._storeName, cleanData);
+    return this._manager.saveDataToStore(this._storeName, data);
   }
 
   async get(id: string | number): Promise<DatabaseItem | null> {
@@ -82,8 +80,7 @@ export class StoreProxy {
   }
 
   async update(item: DatabaseItem): Promise<DatabaseItem | null> {
-    const cleanItem = item;
-    return this._manager.updateDataByIdInStore(this._storeName, cleanItem.id!, cleanItem);
+    return this._manager.updateDataByIdInStore(this._storeName, item.id!, item);
   }
 
   async delete(id: string | number): Promise<boolean> {
@@ -116,13 +113,11 @@ export class StoreProxy {
   }
 
   async addMany(items: Partial<DatabaseItem>[]): Promise<boolean> {
-    const cleanItems = items.map(item => item);
-    return this._manager.addManyToStore(this._storeName, cleanItems);
+    return this._manager.addManyToStore(this._storeName, items);
   }
 
   async updateMany(items: DatabaseItem[]): Promise<boolean> {
-    const cleanItems = items.map(item => item);
-    return this._manager.updateManyInStore(this._storeName, cleanItems);
+    return this._manager.updateManyInStore(this._storeName, items);
   }
 
   async deleteMany(ids: (string | number)[]): Promise<boolean> {
@@ -138,19 +133,23 @@ export class StoreProxy {
   }
 }
 
-// IndexedDB Manager principal
 export class IndexedDBManager {
   private dbConfig: DatabaseConfig;
   private schemaManager: SchemaManager = new SchemaManager();
   public emitterInstance: Emitter;
-  private db: IDBDatabase | null;
+  private db: any | null;
   private defaultIndexes: DatabaseIndex[];
   private storeProxies: Map<string, StoreProxy> = new Map();
+  private adapter: StorageAdapter;
+  private isNodeEnvironment: boolean;
 
   constructor(
     dbConfig: DatabaseConfig | { defaultDatabase: DatabaseConfig } | DatabaseSchema, 
-    options?: IndexedDBManagerOptions
+    options?: IndexedDBManagerOptions & { adapter?: StorageAdapter }
   ) {
+    this.isNodeEnvironment = typeof window === 'undefined';
+    this.adapter = options?.adapter || new BrowserAdapter();
+
     if ('stores' in dbConfig) {
       this.schemaManager.setSchema(dbConfig);
       this.dbConfig = {
@@ -179,11 +178,17 @@ export class IndexedDBManager {
     }
   }
 
+  setAdapter(adapter: StorageAdapter): void {
+    this.adapter = adapter;
+    this.isNodeEnvironment = !(adapter instanceof BrowserAdapter);
+  }
+
   static async initializeWithSchema(schema: DatabaseSchema, options?: IndexedDBManagerOptions): Promise<IndexedDBManager> {
     const manager = new IndexedDBManager(schema, { ...options, autoInit: false });
     await manager.openDatabase();
     return manager;
   }
+
   async registerSchema(schema: DatabaseSchema): Promise<void> {
     this.schemaManager.setSchema(schema);
     
@@ -224,7 +229,6 @@ export class IndexedDBManager {
     }
   }
 
-  // Método para obtener información de schemas
   getSchemaInfo(): { current: DatabaseSchema | null, registered: string[] } {
     return {
       current: this.schemaManager.getSchema(),
@@ -325,7 +329,11 @@ export class IndexedDBManager {
     const newData: DatabaseItem = { ...cleanData, id: targetId } as DatabaseItem;
     const actionType: EmitEvents = isUpdate ? "update" : "add";
 
-    console.log(`Saving to store: ${storeName}, ID: ${targetId}, Action: ${actionType}`);
+    if (this.isNodeEnvironment) {
+      await this.adapter.put({ db: this.db, storeName }, newData);
+      this.emitEvent(actionType, newData);
+      return newData;
+    }
 
     return this.executeTransaction(
       storeName,
@@ -334,10 +342,7 @@ export class IndexedDBManager {
         return new Promise<DatabaseItem>((resolve, reject) => {
           const request = store.put(newData);
           request.onsuccess = () => resolve(newData);
-          request.onerror = () => {
-            console.error("Error in store.put:", request.error);
-            reject(request.error);
-          };
+          request.onerror = () => reject(request.error);
         });
       }
     ).then((savedData) => {
@@ -353,6 +358,10 @@ export class IndexedDBManager {
 
     const normalizedId = normalizeId(id);
     
+    if (this.isNodeEnvironment) {
+      return this.adapter.get({ db: this.db, storeName }, normalizedId);
+    }
+
     return this.executeTransaction(
       storeName,
       "readonly",
@@ -379,6 +388,17 @@ export class IndexedDBManager {
     const exists = await this.idExistsInStore(storeName, normalizedId);
     
     if (!exists) {
+      return null;
+    }
+
+    if (this.isNodeEnvironment) {
+      const existing = await this.adapter.get({ db: this.db, storeName }, normalizedId);
+      if (existing) {
+        const newData: DatabaseItem = { ...existing, ...updatedData, id: normalizedId };
+        await this.adapter.put({ db: this.db, storeName }, newData);
+        this.emitEvent("update", newData);
+        return newData;
+      }
       return null;
     }
 
@@ -420,6 +440,12 @@ export class IndexedDBManager {
 
     const keyId = normalizeId(id);
 
+    if (this.isNodeEnvironment) {
+      await this.adapter.delete({ db: this.db, storeName }, keyId);
+      this.emitEvent("delete", keyId as number);
+      return keyId;
+    }
+
     return this.executeTransaction(
       storeName,
       "readwrite",
@@ -437,6 +463,10 @@ export class IndexedDBManager {
   }
 
   async getAllDataFromStore(storeName: string): Promise<DatabaseItem[]> {
+    if (this.isNodeEnvironment) {
+      return this.adapter.getAll({ db: this.db, storeName });
+    }
+
     return this.executeTransaction(
       storeName,
       "readonly",
@@ -451,6 +481,12 @@ export class IndexedDBManager {
   }
 
   async clearStore(storeName: string): Promise<void> {
+    if (this.isNodeEnvironment) {
+      await this.adapter.clear({ db: this.db, storeName });
+      this.emitEvent("clear", null);
+      return;
+    }
+
     return this.executeTransaction(
       storeName,
       "readwrite",
@@ -468,6 +504,10 @@ export class IndexedDBManager {
   }
 
   async countInStore(storeName: string): Promise<number> {
+    if (this.isNodeEnvironment) {
+      return this.adapter.count({ db: this.db, storeName });
+    }
+
     return this.executeTransaction(
       storeName,
       "readonly",
@@ -603,6 +643,33 @@ export class IndexedDBManager {
   async addManyToStore(storeName: string, items: Partial<DatabaseItem>[]): Promise<boolean> {
     const itemsToEmit: { actionType: EmitEvents, data: DatabaseItem }[] = [];
 
+    if (this.isNodeEnvironment) {
+      const allDataInStore = await this.adapter.getAll({ db: this.db, storeName });
+      const existingIds = new Set(allDataInStore.map((d: DatabaseItem) => d.id));
+
+      for (const item of items) {
+        const cleanItem = { ...item };
+        let targetId: string | number;
+        let isUpdate = false;
+
+        if (isValidId(cleanItem.id)) {
+          targetId = normalizeId(cleanItem.id as string | number);
+          isUpdate = existingIds.has(targetId);
+        } else {
+          targetId = generateNextId([...allDataInStore, ...itemsToEmit.map(i => i.data)]);
+        }
+
+        const newData = { ...cleanItem, id: targetId } as DatabaseItem;
+        await this.adapter.put({ db: this.db, storeName }, newData);
+
+        const actionType: EmitEvents = isUpdate ? "update" : "add";
+        itemsToEmit.push({ actionType, data: newData });
+      }
+
+      itemsToEmit.forEach(item => this.emitEvent(item.actionType, item.data));
+      return true;
+    }
+
     return this.executeTransaction(storeName, "readwrite", async (store) => {
       const allDataInStore = await new Promise<DatabaseItem[]>((resolve, reject) => {
         const req = store.getAll();
@@ -656,7 +723,15 @@ export class IndexedDBManager {
   }
 
   async updateManyInStore(storeName: string, items: DatabaseItem[]): Promise<boolean> {
-    const itemsToEmit = [...items]; 
+    const itemsToEmit = [...items];
+
+    if (this.isNodeEnvironment) {
+      for (const item of items) {
+        await this.adapter.put({ db: this.db, storeName }, item);
+      }
+      itemsToEmit.forEach(item => this.emitEvent("update", item));
+      return true;
+    }
 
     return this.executeTransaction(storeName, "readwrite", async (store) => {
       const promises = items.map(item => {
@@ -683,6 +758,14 @@ export class IndexedDBManager {
   async deleteManyFromStore(storeName: string, ids: (string | number)[]): Promise<boolean> {
     const idsToEmit = ids.map(normalizeId);
 
+    if (this.isNodeEnvironment) {
+      for (const id of idsToEmit) {
+        await this.adapter.delete({ db: this.db, storeName }, id);
+      }
+      idsToEmit.forEach(id => this.emitEvent("delete", id as number));
+      return true;
+    }
+
     return this.executeTransaction(storeName, "readwrite", async (store) => {
       const normalizedIds = ids.map(normalizeId);
       const promises = normalizedIds.map(id => {
@@ -705,7 +788,6 @@ export class IndexedDBManager {
       return false;
     });
   }
-
 
   async getManyFromStore(storeName: string, ids: (string | number)[]): Promise<DatabaseItem[]> {
     const results: DatabaseItem[] = [];
@@ -734,6 +816,11 @@ export class IndexedDBManager {
   private async idExistsInStore(storeName: string, id: string | number): Promise<boolean> {
     const normalizedId = normalizeId(id);
     
+    if (this.isNodeEnvironment) {
+      const item = await this.adapter.get({ db: this.db, storeName }, normalizedId);
+      return item !== null && item !== undefined;
+    }
+
     return this.executeTransaction(
       storeName,
       "readonly",
@@ -829,8 +916,33 @@ export class IndexedDBManager {
     return this.getStatsForStore(this.dbConfig.store);
   }
 
-  async openDatabase(): Promise<IDBDatabase> {
+  async openDatabase(): Promise<any> {
     if (this.db) return this.db;
+
+    if (this.isNodeEnvironment) {
+      this.db = await this.adapter.openDatabase(this.dbConfig.name, this.dbConfig.version);
+      
+      const currentSchema = this.schemaManager.getSchema();
+      if (currentSchema) {
+        currentSchema.stores.forEach(storeConfig => {
+          if (!this.db.stores.has(storeConfig.name)) {
+            this.adapter.createObjectStore(this.db, storeConfig.name, {
+              keyPath: storeConfig.keyPath || "id",
+              autoIncrement: storeConfig.autoIncrement || false,
+            });
+          }
+        });
+      } else {
+        if (!this.db.stores.has(this.dbConfig.store)) {
+          this.adapter.createObjectStore(this.db, this.dbConfig.store, {
+            keyPath: "id",
+            autoIncrement: false,
+          });
+        }
+      }
+      
+      return this.db;
+    }
 
     return new Promise<IDBDatabase>((resolve, reject) => {
       const currentSchema = this.schemaManager.getSchema();
@@ -853,10 +965,8 @@ export class IndexedDBManager {
 
         try {
           if (currentSchema) {
-            console.log(`Creating stores for schema: ${currentSchema.name}`);
             currentSchema.stores.forEach(storeConfig => {
               if (!db.objectStoreNames.contains(storeConfig.name)) {
-                console.log(`Creating store: ${storeConfig.name}`);
                 const objectStore = db.createObjectStore(storeConfig.name, {
                   keyPath: storeConfig.keyPath || "id",
                   autoIncrement: storeConfig.autoIncrement || false,
@@ -869,20 +979,16 @@ export class IndexedDBManager {
                         objectStore.createIndex(index.name, index.keyPath, {
                           unique: index.unique,
                         });
-                        console.log(`Index ${index.name} created for store ${storeConfig.name}.`);
                       }
                     } catch (indexError) {
                       console.error(`Error creating index ${index.name}:`, indexError);
                     }
                   });
                 }
-              } else {
-                console.log(`Store ${storeConfig.name} already exists`);
               }
             });
           } else {
             if (!db.objectStoreNames.contains(this.dbConfig.store)) {
-              console.log(`Creating legacy store: ${this.dbConfig.store}`);
               const objectStore = db.createObjectStore(this.dbConfig.store, {
                 keyPath: "id",
                 autoIncrement: false,
@@ -894,7 +1000,6 @@ export class IndexedDBManager {
                     objectStore.createIndex(index.name, index.keyPath, {
                       unique: index.unique,
                     });
-                    console.log(`Index ${index.name} created for store ${this.dbConfig.store}.`);
                   }
                 } catch (indexError) {
                   console.error(`Error creating index ${index.name}:`, indexError);
@@ -910,7 +1015,6 @@ export class IndexedDBManager {
       request.onsuccess = () => {
         try {
           this.db = request.result;
-          console.log(`Database ${this.dbConfig.name} opened successfully`);
           resolve(this.db);
         } catch (successError) {
           console.error('Error in onsuccess handler:', successError);
@@ -1021,8 +1125,7 @@ export class IndexedDBManager {
 
   close(): void {
     if (this.db) {
-      console.log(`Closing database ${this.dbConfig.name}`);
-      this.db.close();
+      this.adapter.close(this.db);
       this.db = null;
     }
     this.storeProxies.clear();
@@ -1048,6 +1151,17 @@ export class IndexedDBManager {
     proxies: number;
   }> {
     const db = await this.openDatabase();
+    
+    if (this.isNodeEnvironment) {
+      return {
+        database: this.dbConfig.name,
+        version: this.dbConfig.version,
+        stores: Array.from(db.stores.keys()),
+        schema: this.schemaManager.getSchema(),
+        proxies: this.storeProxies.size
+      };
+    }
+
     return {
       database: this.dbConfig.name,
       version: this.dbConfig.version,

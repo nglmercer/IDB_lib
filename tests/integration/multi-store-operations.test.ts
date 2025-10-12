@@ -3,6 +3,7 @@ import '../setup.js';
 import { IndexedDBManager } from '../../src/core/IndexedDBManager.js';
 import type { DatabaseConfig, DatabaseItem,DatabaseSchema } from '../../src/types/index.js';
 import { waitForAsync, createTestData } from '../setup.js';
+import { NodeAdapter } from '../../src/adapters/node.js';
 
 describe('Multi-Store Operations Integration', () => {
   let manager: IndexedDBManager;
@@ -56,7 +57,11 @@ describe('Multi-Store Operations Integration', () => {
       ]
     };
 
-    manager = await IndexedDBManager.initializeWithSchema(appSchema);
+    manager = await IndexedDBManager.initializeWithSchema(appSchema,{
+      autoInit: true,
+      debug: true,
+      adapter: new NodeAdapter()
+    });
   });
 
   describe('Inicialización con esquema', () => {

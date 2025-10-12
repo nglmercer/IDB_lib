@@ -1,55 +1,57 @@
-import type { DatabaseConfig, DatabaseItem, ImportOptions, ExportOptions,CreateDatabaseItem } from '../types/index.js';
+import type { DatabaseConfig, DatabaseItem, ImportOptions, ExportOptions, CreateDatabaseItem } from '../types/index.js';
 import { downloadJSON, readJSONFile, convertToCSV } from './helpers.js';
+import type { StorageAdapter } from '../adapters/types.js';
+import { BrowserAdapter } from '../adapters/browser.js';
+import { NodeAdapter } from '../adapters/node.js';
+
+// Detect environment and create default adapter
+function getDefaultAdapter(): StorageAdapter {
+  if (typeof window === 'undefined') {
+    // Node environment
+    return new NodeAdapter('./data', { inMemory: true });
+  }
+  // Browser environment
+  return new BrowserAdapter();
+}
+
+const defaultAdapter = getDefaultAdapter();
 
 /**
  * Obtiene todos los datos de una base de datos específica
  */
 export async function getAllDataFromDatabase(
-  databaseConfig: DatabaseConfig
+  databaseConfig: DatabaseConfig,
+  adapter: StorageAdapter = defaultAdapter
 ): Promise<DatabaseItem[]> {
   if (!databaseConfig || !databaseConfig.name || !databaseConfig.version) {
     console.error("Invalid database configuration:", databaseConfig);
     return [];
   }
 
-  return new Promise<DatabaseItem[]>((resolve) => {
-    const request = indexedDB.open(databaseConfig.name, databaseConfig.version);
-
-    request.onupgradeneeded = (event: IDBVersionChangeEvent) => {
-      const db = (event.target as IDBOpenDBRequest).result;
+  try {
+    const db = await adapter.openDatabase(databaseConfig.name, databaseConfig.version);
+    
+    // Ensure store exists
+    if (adapter instanceof BrowserAdapter) {
+      // Browser: check if store exists
       if (!db.objectStoreNames.contains(databaseConfig.store)) {
-        db.createObjectStore(databaseConfig.store, { keyPath: "id" });
+        adapter.close(db);
+        return [];
       }
-    };
-
-    request.onsuccess = () => {
-      const db = request.result;
-
-      if (!db.objectStoreNames.contains(databaseConfig.store)) {
-        db.close();
-        resolve([]);
-        return;
+    } else if (adapter instanceof NodeAdapter) {
+      // Node: ensure store exists
+      if (!db.stores.has(databaseConfig.store)) {
+        adapter.createObjectStore(db, databaseConfig.store, { keyPath: 'id', autoIncrement: false });
       }
+    }
 
-      const transaction = db.transaction([databaseConfig.store], "readonly");
-      const store = transaction.objectStore(databaseConfig.store);
-      const getAllRequest = store.getAll();
-
-      getAllRequest.onsuccess = () => {
-        resolve(getAllRequest.result);
-        db.close();
-      };
-
-      getAllRequest.onerror = () => {
-        resolve([]);
-        db.close();
-      };
-    };
-
-    request.onerror = () => {
-      resolve([]);
-    };
-  });
+    const result = await adapter.getAll({ db, storeName: databaseConfig.store });
+    adapter.close(db);
+    return result || [];
+  } catch (error) {
+    console.error('Error getting data from database:', error);
+    return [];
+  }
 }
 
 /**
@@ -58,7 +60,8 @@ export async function getAllDataFromDatabase(
 export async function importDataToDatabase(
   databaseConfig: DatabaseConfig,
   data: CreateDatabaseItem[],
-  options: ImportOptions = {}
+  options: ImportOptions = {},
+  adapter: StorageAdapter = defaultAdapter
 ): Promise<boolean> {
   // Validate database configuration first
   if (!databaseConfig || !databaseConfig.name || !databaseConfig.version || !databaseConfig.store) {
@@ -68,89 +71,51 @@ export async function importDataToDatabase(
 
   const { clearBefore = true, validate = true, transform } = options;
 
-  return new Promise<boolean>((resolve) => {
-    const request = indexedDB.open(databaseConfig.name, databaseConfig.version);
-
-    request.onupgradeneeded = (event: IDBVersionChangeEvent) => {
-      const db = (event.target as IDBOpenDBRequest).result;
-      if (!db.objectStoreNames.contains(databaseConfig.store)) {
-        db.createObjectStore(databaseConfig.store, { keyPath: "id" });
+  try {
+    const db = await adapter.openDatabase(databaseConfig.name, databaseConfig.version);
+    
+    // Ensure store exists
+    if (adapter instanceof NodeAdapter) {
+      if (!db.stores.has(databaseConfig.store)) {
+        adapter.createObjectStore(db, databaseConfig.store, { keyPath: 'id', autoIncrement: false });
       }
-    };
+    }
 
-    request.onsuccess = () => {
-      const db = request.result;
-      const transaction = db.transaction([databaseConfig.store], "readwrite");
-      const store = transaction.objectStore(databaseConfig.store);
+    // Clear if needed
+    if (clearBefore) {
+      await adapter.clear({ db, storeName: databaseConfig.store });
+    }
 
-      const processData = () => {
-        let processedData = data;
-        
-        // Validar datos si está habilitado
-        if (validate) {
-          processedData = data.filter(item => {
-            return item && typeof item === 'object' && (item.id !== undefined && item.id !== null);
-          });
-        }
-        
-        // Transformar datos si se proporciona función
-        if (transform) {
-          processedData = processedData.map(transform);
-        }
-        
-        // Agregar todos los datos
-        let completed = 0;
-        const total = processedData.length;
+    // Process data
+    let processedData = data;
+    
+    // Validar datos si está habilitado
+    if (validate) {
+      processedData = data.filter(item => {
+        return item && typeof item === 'object' && (item.id !== undefined && item.id !== null);
+      });
+    }
+    
+    // Transformar datos si se proporciona función
+    if (transform) {
+      processedData = processedData.map(transform);
+    }
 
-        if (total === 0) {
-          db.close();
-          resolve(true);
-          return;
-        }
-
-        processedData.forEach((item) => {
-          const addRequest = store.put(item); // Usar put en lugar de add para permitir sobrescritura
-          
-          addRequest.onsuccess = () => {
-            completed++;
-            if (completed === total) {
-              db.close();
-              resolve(true);
-            }
-          };
-
-          addRequest.onerror = () => {
-            console.error('Error importing item:', item, addRequest.error);
-            completed++;
-            if (completed === total) {
-              db.close();
-              resolve(false);
-            }
-          };
-        });
-      };
-
-      if (clearBefore) {
-        // Limpiar la base de datos antes de importar
-        const clearRequest = store.clear();
-        
-        clearRequest.onsuccess = () => {
-          processData();
-        };
-
-        clearRequest.onerror = () => {
-          db.close();
-          resolve(false);
-        };
-      } else {
-        processData();
+    // Import all data
+    for (const item of processedData) {
+      try {
+        await adapter.put({ db, storeName: databaseConfig.store }, item);
+      } catch (error) {
+        console.error('Error importing item:', item, error);
       }
-    };
+    }
 
-    request.onerror = () => {
-      resolve(false);
-    };
-  });
+    adapter.close(db);
+    return true;
+  } catch (error) {
+    console.error('Error importing data to database:', error);
+    return false;
+  }
 }
 
 /**
@@ -158,12 +123,13 @@ export async function importDataToDatabase(
  */
 export async function exportDataFromDatabase(
   databaseConfig: DatabaseConfig,
-  options: ExportOptions = {}
+  options: ExportOptions = {},
+  adapter: StorageAdapter = defaultAdapter
 ): Promise<void> {
   const { format = 'json', filename, filters } = options;
   
   try {
-    let data = await getAllDataFromDatabase(databaseConfig);
+    let data = await getAllDataFromDatabase(databaseConfig, adapter);
     
     // Aplicar filtros si se proporcionan
     if (filters && Object.keys(filters).length > 0) {
@@ -182,15 +148,28 @@ export async function exportDataFromDatabase(
     
     if (format === 'csv') {
       const csvContent = convertToCSV(data);
-      const blob = new Blob([csvContent], { type: 'text/csv' });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `${defaultFilename}.csv`;
-      link.click();
-      URL.revokeObjectURL(url);
+      
+      // Check if we're in browser or Node
+      if (typeof window !== 'undefined' && typeof document !== 'undefined') {
+        const blob = new Blob([csvContent], { type: 'text/csv' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `${defaultFilename}.csv`;
+        link.click();
+        URL.revokeObjectURL(url);
+      } else {
+        // Node environment - just log or return the data
+        console.log('CSV export in Node environment - data:', csvContent.substring(0, 100) + '...');
+      }
     } else {
-      downloadJSON(data, `${defaultFilename}.json`);
+      // Check if we're in browser or Node
+      if (typeof window !== 'undefined') {
+        downloadJSON(data, `${defaultFilename}.json`);
+      } else {
+        // Node environment - just log or return the data
+        console.log('JSON export in Node environment - data length:', data.length);
+      }
     }
   } catch (error) {
     console.error('Error exporting data:', error);
@@ -204,11 +183,14 @@ export async function exportDataFromDatabase(
 export async function importDataFromFile(
   file: File,
   databaseConfig: DatabaseConfig,
-  options: ImportOptions = {}
+  options: ImportOptions = {},
+  adapter: StorageAdapter = defaultAdapter
 ): Promise<boolean> {
   try {
     const data = await readJSONFile(file);
-    return await importDataToDatabase(databaseConfig, data, options);
+    // Ensure data is an array
+    const dataArray = Array.isArray(data) ? data : [data];
+    return await importDataToDatabase(databaseConfig, dataArray, options, adapter);
   } catch (error) {
     console.error('Error importing data from file:', error);
     return false;
@@ -220,7 +202,8 @@ export async function importDataFromFile(
  */
 export async function createBackup(
   databaseConfig: DatabaseConfig,
-  filename?: string
+  filename?: string,
+  adapter: StorageAdapter = defaultAdapter
 ): Promise<void> {
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
   const backupFilename = filename || `backup_${databaseConfig.name}_${timestamp}.json`;
@@ -228,7 +211,7 @@ export async function createBackup(
   await exportDataFromDatabase(databaseConfig, {
     format: 'json',
     filename: backupFilename
-  });
+  }, adapter);
 }
 
 /**
@@ -236,10 +219,11 @@ export async function createBackup(
  */
 export async function restoreFromBackup(
   file: File,
-  databaseConfig: DatabaseConfig
+  databaseConfig: DatabaseConfig,
+  adapter: StorageAdapter = defaultAdapter
 ): Promise<boolean> {
   return await importDataFromFile(file, databaseConfig, {
     clearBefore: true,
     validate: true
-  });
+  }, adapter);
 }
