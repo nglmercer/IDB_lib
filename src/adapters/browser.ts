@@ -6,159 +6,102 @@ export class BrowserAdapter implements StorageAdapter {
       const request = indexedDB.open(name, version);
       request.onsuccess = () => resolve(request.result);
       request.onerror = () => reject(request.error);
-      request.onupgradeneeded = (event) => {
-        // Handle upgradeneeded if needed
-      };
+      // onupgradeneeded is handled by the IndexedDBManager, which will call
+      // createObjectStore on the adapter.
+      request.onupgradeneeded = () => { /* intentionally empty */ };
     });
   }
 
   transaction(storeName: string, mode: 'readonly' | 'readwrite'): any {
+    // This is a placeholder as transactions are created per-operation.
     return { storeName, mode };
   }
 
   createObjectStore(db: IDBDatabase, name: string, options: any): IDBObjectStore {
     if (db.objectStoreNames.contains(name)) {
-      // Cannot recreate existing store, return a reference
       const transaction = db.transaction([name], 'readwrite');
       return transaction.objectStore(name);
     }
     return db.createObjectStore(name, options);
   }
 
-  async get(storeInfo: { db: IDBDatabase; storeName: string } | IDBObjectStore, key: any): Promise<any> {
-    // Handle both old signature (IDBObjectStore) and new signature (storeInfo)
-    if ('objectStoreNames' in storeInfo) {
-      // storeInfo is actually { db, storeName }
-      const { db, storeName } = storeInfo as { db: IDBDatabase; storeName: string };
-      return new Promise((resolve, reject) => {
-        const transaction = db.transaction([storeName], 'readonly');
+  private _executeRequest<T>(
+    db: IDBDatabase,
+    storeName: string,
+    mode: IDBTransactionMode,
+    operation: (store: IDBObjectStore) => IDBRequest<T>
+  ): Promise<T> {
+    return new Promise((resolve, reject) => {
+      try {
+        const transaction = db.transaction([storeName], mode);
         const store = transaction.objectStore(storeName);
-        const request = store.get(key);
+        const request = operation(store);
         request.onsuccess = () => resolve(request.result);
         request.onerror = () => reject(request.error);
-      });
-    } else {
-      // storeInfo is IDBObjectStore (old signature)
-      const store = storeInfo as IDBObjectStore;
-      return new Promise((resolve, reject) => {
-        const request = store.get(key);
-        request.onsuccess = () => resolve(request.result);
-        request.onerror = () => reject(request.error);
-      });
-    }
+      } catch (error) {
+        reject(error);
+      }
+    });
   }
 
-  async put(storeInfo: { db: IDBDatabase; storeName: string } | IDBObjectStore, value: any): Promise<any> {
-    if ('objectStoreNames' in storeInfo) {
-      const { db, storeName } = storeInfo as { db: IDBDatabase; storeName: string };
-      return new Promise((resolve, reject) => {
-        const transaction = db.transaction([storeName], 'readwrite');
-        const store = transaction.objectStore(storeName);
-        const request = store.put(value);
-        request.onsuccess = () => resolve(request.result);
-        request.onerror = () => reject(request.error);
-      });
-    } else {
-      const store = storeInfo as IDBObjectStore;
-      return new Promise((resolve, reject) => {
-        const request = store.put(value);
-        request.onsuccess = () => resolve(request.result);
-        request.onerror = () => reject(request.error);
-      });
-    }
+  async get(storeInfo: { db: IDBDatabase; storeName: string }, key: any): Promise<any> {
+    const { db, storeName } = storeInfo;
+    return this._executeRequest(db, storeName, 'readonly', (store) => store.get(key));
   }
 
-  async delete(storeInfo: { db: IDBDatabase; storeName: string } | IDBObjectStore, key: any): Promise<any> {
-    if ('objectStoreNames' in storeInfo) {
-      const { db, storeName } = storeInfo as { db: IDBDatabase; storeName: string };
-      return new Promise((resolve, reject) => {
-        const transaction = db.transaction([storeName], 'readwrite');
-        const store = transaction.objectStore(storeName);
-        const request = store.delete(key);
-        request.onsuccess = () => resolve(request.result);
-        request.onerror = () => reject(request.error);
-      });
-    } else {
-      const store = storeInfo as IDBObjectStore;
-      return new Promise((resolve, reject) => {
-        const request = store.delete(key);
-        request.onsuccess = () => resolve(request.result);
-        request.onerror = () => reject(request.error);
-      });
-    }
+  async put(storeInfo: { db: IDBDatabase; storeName: string }, value: any): Promise<any> {
+    const { db, storeName } = storeInfo;
+    return this._executeRequest(db, storeName, 'readwrite', (store) => store.put(value));
   }
 
-  async getAll(storeInfo: { db: IDBDatabase; storeName: string } | IDBObjectStore): Promise<any[]> {
-    if ('objectStoreNames' in storeInfo) {
-      const { db, storeName } = storeInfo as { db: IDBDatabase; storeName: string };
-      return new Promise((resolve, reject) => {
-        const transaction = db.transaction([storeName], 'readonly');
-        const store = transaction.objectStore(storeName);
-        const request = store.getAll();
-        request.onsuccess = () => resolve(request.result);
-        request.onerror = () => reject(request.error);
-      });
-    } else {
-      const store = storeInfo as IDBObjectStore;
-      return new Promise((resolve, reject) => {
-        const request = store.getAll();
-        request.onsuccess = () => resolve(request.result);
-        request.onerror = () => reject(request.error);
-      });
-    }
+  async delete(storeInfo: { db: IDBDatabase; storeName: string }, key: any): Promise<void> {
+    const { db, storeName } = storeInfo;
+    return this._executeRequest(db, storeName, 'readwrite', (store) => store.delete(key));
   }
 
-  async clear(storeInfo: { db: IDBDatabase; storeName: string } | IDBObjectStore): Promise<void> {
-    if ('objectStoreNames' in storeInfo) {
-      const { db, storeName } = storeInfo as { db: IDBDatabase; storeName: string };
-      return new Promise((resolve, reject) => {
-        const transaction = db.transaction([storeName], 'readwrite');
-        const store = transaction.objectStore(storeName);
-        const request = store.clear();
-        request.onsuccess = () => resolve();
-        request.onerror = () => reject(request.error);
-      });
-    } else {
-      const store = storeInfo as IDBObjectStore;
-      return new Promise((resolve, reject) => {
-        const request = store.clear();
-        request.onsuccess = () => resolve();
-        request.onerror = () => reject(request.error);
-      });
-    }
+  async getAll(storeInfo: { db: IDBDatabase; storeName: string }): Promise<any[]> {
+    const { db, storeName } = storeInfo;
+    return this._executeRequest(db, storeName, 'readonly', (store) => store.getAll());
   }
 
-  async count(storeInfo: { db: IDBDatabase; storeName: string } | IDBObjectStore): Promise<number> {
-    if ('objectStoreNames' in storeInfo) {
-      const { db, storeName } = storeInfo as { db: IDBDatabase; storeName: string };
-      return new Promise((resolve, reject) => {
-        const transaction = db.transaction([storeName], 'readonly');
-        const store = transaction.objectStore(storeName);
-        const request = store.count();
-        request.onsuccess = () => resolve(request.result);
-        request.onerror = () => reject(request.error);
-      });
-    } else {
-      const store = storeInfo as IDBObjectStore;
-      return new Promise((resolve, reject) => {
-        const request = store.count();
-        request.onsuccess = () => resolve(request.result);
-        request.onerror = () => reject(request.error);
-      });
-    }
+  async clear(storeInfo: { db: IDBDatabase; storeName: string }): Promise<void> {
+    const { db, storeName } = storeInfo;
+    return this._executeRequest(db, storeName, 'readwrite', (store) => store.clear());
+  }
+
+  async count(storeInfo: { db: IDBDatabase; storeName: string }): Promise<number> {
+    const { db, storeName } = storeInfo;
+    return this._executeRequest(db, storeName, 'readonly', (store) => store.count());
   }
 
   close(db: IDBDatabase): void {
     db.close();
   }
 
-  deleteDatabase(name: string): void {
-    indexedDB.deleteDatabase(name);
+  async deleteDatabase(name: string): Promise<void> {
+     return new Promise((resolve, reject) => {
+        const request = indexedDB.deleteDatabase(name);
+        request.onsuccess = () => resolve();
+        request.onerror = () => reject(request.error);
+        request.onblocked = () => {
+          console.warn(`Deletion of database ${name} is blocked.`);
+          // Resolve anyway as the block will eventually clear, but the operation is requested.
+          resolve(); 
+        };
+     });
   }
 
-  clearAll(): void {
-    // Browser doesn't have a direct way to clear all databases
-    // This would need to be implemented by tracking database names
-    console.warn('clearAll not fully implemented for BrowserAdapter');
+  async clearAll(): Promise<void> {
+    console.warn('clearAll is not implemented for BrowserAdapter due to IndexedDB limitations.');
+    if (indexedDB.databases) {
+      const dbs = await indexedDB.databases();
+      for (const dbInfo of dbs) {
+        if(dbInfo.name) {
+          await this.deleteDatabase(dbInfo.name);
+        }
+      }
+    } else {
+       console.warn('indexedDB.databases() is not supported in this browser. Cannot clear all databases automatically.');
+    }
   }
 }

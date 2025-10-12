@@ -36,9 +36,6 @@ export class NodeAdapter implements StorageAdapter {
     
     if (this.databases.has(name)) {
       const db = this.databases.get(name)!;
-      for (const [storeName, store] of db.stores.entries()) {
-        store.data.clear();
-      }
       return db;
     }
 
@@ -161,8 +158,8 @@ export class NodeAdapter implements StorageAdapter {
   close(db: NodeDatabase): void {
     if (!this.inMemoryMode) {
       this.saveDatabase(db);
+      this.databases.delete(db.name);
     }
-    this.databases.delete(db.name);
   }
 
   deleteDatabase(name: string): void {
