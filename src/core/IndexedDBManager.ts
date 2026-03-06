@@ -251,6 +251,22 @@ export class IndexedDBManager<T extends DatabaseItem = DatabaseItem> {
     return this.dbConfig;
   }
 
+  get config(): DatabaseConfig {
+    return this.dbConfig;
+  }
+
+  get currentStore(): string {
+    return this.dbConfig.store;
+  }
+
+  get currentDatabase(): string {
+    return this.dbConfig.name;
+  }
+
+  get version(): number {
+    return this.dbConfig.version;
+  }
+
   async getAll(): Promise<T[]> {
     return this.getAllData();
   }
@@ -424,6 +440,18 @@ export class IndexedDBManager<T extends DatabaseItem = DatabaseItem> {
   async getStats(): Promise<DatabaseStats> {
     return this.databaseOperations.getStatsForStore(this.dbConfig.store);
   }
+  async getById(id: string | number): Promise<T | null> {
+    return this.get(id);
+  }
+
+  async updateById(id: string | number, data: Partial<T>): Promise<T | null> {
+    return this.updateDataById(id, data);
+  }
+
+  async deleteById(id: string | number): Promise<boolean> {
+    return this.delete(id);
+  }
+
   async open(){
     return this.openDatabase();
   }
