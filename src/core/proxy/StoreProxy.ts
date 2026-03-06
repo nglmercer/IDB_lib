@@ -11,7 +11,7 @@ import type {
 // Forward declaration type
 type IndexedDBManagerType = any;
 
-export class StoreProxy {
+export class StoreProxy<T extends DatabaseItem = DatabaseItem> {
   private _manager: IndexedDBManagerType;
   private _storeName: string;
   private _instanceId: string;
@@ -30,15 +30,15 @@ export class StoreProxy {
     return this._instanceId;
   }
 
-  async add(data: Partial<DatabaseItem>): Promise<DatabaseItem> {
+  async add(data: Partial<T>): Promise<T> {
     return this._manager.saveDataToStore(this._storeName, data);
   }
 
-  async get(id: string | number): Promise<DatabaseItem | null> {
+  async get(id: string | number): Promise<T | null> {
     return this._manager.getDataByIdFromStore(this._storeName, id);
   }
 
-  async update(item: DatabaseItem): Promise<DatabaseItem | null> {
+  async update(item: T): Promise<T | null> {
     return this._manager.updateDataByIdInStore(this._storeName, item.id!, item);
   }
 
@@ -51,7 +51,7 @@ export class StoreProxy {
     }
   }
 
-  async getAll(): Promise<DatabaseItem[]> {
+  async getAll(): Promise<T[]> {
     return this._manager.getAllDataFromStore(this._storeName);
   }
 
@@ -63,19 +63,19 @@ export class StoreProxy {
     return this._manager.countInStore(this._storeName);
   }
 
-  async search(query: Partial<DatabaseItem>, options: SearchOptions = {}): Promise<SearchResult> {
+  async search(query: Partial<T>, options: SearchOptions = {}): Promise<SearchResult<T>> {
     return this._manager.searchDataInStore(this._storeName, query, options);
   }
 
-  async filter(criteria: FilterCriteria): Promise<DatabaseItem[]> {
+  async filter(criteria: FilterCriteria): Promise<T[]> {
     return this._manager.filterInStore(this._storeName, criteria);
   }
 
-  async addMany(items: Partial<DatabaseItem>[]): Promise<boolean> {
+  async addMany(items: Partial<T>[]): Promise<boolean> {
     return this._manager.addManyToStore(this._storeName, items);
   }
 
-  async updateMany(items: DatabaseItem[]): Promise<boolean> {
+  async updateMany(items: T[]): Promise<boolean> {
     return this._manager.updateManyInStore(this._storeName, items);
   }
 
@@ -83,7 +83,7 @@ export class StoreProxy {
     return this._manager.deleteManyFromStore(this._storeName, ids);
   }
 
-  async getMany(ids: (string | number)[]): Promise<DatabaseItem[]> {
+  async getMany(ids: (string | number)[]): Promise<T[]> {
     return this._manager.getManyFromStore(this._storeName, ids);
   }
 

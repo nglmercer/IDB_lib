@@ -24,7 +24,6 @@ import type {
   FilterCriteria,
   SearchTextOptions,
   DatabaseStats,
-  CreateDatabaseItem,
   DatabaseSchema
 } from '../types/index.js';
 import type { StorageAdapter } from '../adapters/types.js';
@@ -34,13 +33,13 @@ import { MemoryAdapter } from '../adapters/memory.js';
 export { SchemaManager, StoreProxy };
 export { DatabaseOperations, BatchOperations, SearchEngine, TransactionManager };
 
-export class IndexedDBManager {
+export class IndexedDBManager<T extends DatabaseItem = DatabaseItem> {
   private dbConfig: DatabaseConfig;
   private schemaManager: SchemaManager = new SchemaManager();
   public emitterInstance: Emitter;
   private db: any | null;
   private defaultIndexes: DatabaseIndex[];
-  private storeProxies: Map<string, StoreProxy> = new Map();
+  private storeProxies: Map<string, StoreProxy<any>> = new Map();
   private adapter: StorageAdapter;
   private isNodeEnvironment: boolean;
 
@@ -183,14 +182,14 @@ export class IndexedDBManager {
     }
   }
 
-  store(storeName: string): StoreProxy {
+  store<S extends DatabaseItem = T>(storeName: string): StoreProxy<S> {
     const currentSchema = this.schemaManager.getSchema();
     if (currentSchema && !this.schemaManager.validateStore(currentSchema.name, storeName)) {
       throw new Error(`Store '${storeName}' not found in schema '${currentSchema.name}'`);
     }
 
     const proxyKey = `${storeName}-${Date.now()}`;
-    const proxy = new StoreProxy(this, storeName);
+    const proxy = new StoreProxy<S>(this, storeName);
     this.storeProxies.set(proxyKey, proxy);
     
     this.cleanupOldProxies(storeName);
@@ -252,11 +251,11 @@ export class IndexedDBManager {
     return this.dbConfig;
   }
 
-  async getAll(): Promise<DatabaseItem[]> {
+  async getAll(): Promise<T[]> {
     return this.getAllData();
   }
 
-  async addMany(items: Partial<DatabaseItem>[]): Promise<boolean> {
+  async addMany(items: Partial<T>[]): Promise<boolean> {
     return this.batchOperations.addManyToStore(this.dbConfig.store, items);
   }
 
@@ -272,11 +271,11 @@ export class IndexedDBManager {
     this.emitterInstance.off(event, callback as EventCallback<unknown>);
   }
 
-  async add(data: Partial<CreateDatabaseItem>): Promise<DatabaseItem> {
+  async add(data: Partial<T>): Promise<T> {
     return this.saveData(data);
   }
 
-  async updateMany(items: DatabaseItem[]): Promise<boolean> {
+  async updateMany(items: T[]): Promise<boolean> {
     return this.batchOperations.updateManyInStore(this.dbConfig.store, items);
   }
 
@@ -288,28 +287,28 @@ export class IndexedDBManager {
     return this.batchOperations.deleteManyFromStore(this.dbConfig.store, ids);
   }
 
-  async saveDataToStore(storeName: string, data: Partial<DatabaseItem>): Promise<DatabaseItem> {
-    return this.databaseOperations.saveDataToStore(storeName, data);
+  async saveDataToStore<S extends DatabaseItem = DatabaseItem>(storeName: string, data: Partial<S>): Promise<S> {
+    return this.databaseOperations.saveDataToStore(storeName, data) as Promise<S>;
   }
 
-  async getDataByIdFromStore(storeName: string, id: string | number): Promise<DatabaseItem | null> {
-    return this.databaseOperations.getDataByIdFromStore(storeName, id);
+  async getDataByIdFromStore<S extends DatabaseItem = DatabaseItem>(storeName: string, id: string | number): Promise<S | null> {
+    return this.databaseOperations.getDataByIdFromStore(storeName, id) as Promise<S | null>;
   }
 
-  async updateDataByIdInStore(
+  async updateDataByIdInStore<S extends DatabaseItem = DatabaseItem>(
     storeName: string,
     id: string | number,
-    updatedData: Partial<DatabaseItem>
-  ): Promise<DatabaseItem | null> {
-    return this.databaseOperations.updateDataByIdInStore(storeName, id, updatedData);
+    updatedData: Partial<S>
+  ): Promise<S | null> {
+    return this.databaseOperations.updateDataByIdInStore(storeName, id, updatedData) as Promise<S | null>;
   }
 
   async deleteDataFromStore(storeName: string, id: string | number): Promise<string | number> {
     return this.databaseOperations.deleteDataFromStore(storeName, id);
   }
 
-  async getAllDataFromStore(storeName: string): Promise<DatabaseItem[]> {
-    return this.databaseOperations.getAllDataFromStore(storeName);
+  async getAllDataFromStore<S extends DatabaseItem = DatabaseItem>(storeName: string): Promise<S[]> {
+    return this.databaseOperations.getAllDataFromStore(storeName) as Promise<S[]>;
   }
 
   async clearStore(storeName: string): Promise<void> {
@@ -320,19 +319,19 @@ export class IndexedDBManager {
     return this.databaseOperations.countInStore(storeName);
   }
 
-  async searchDataInStore(storeName: string, query: Partial<DatabaseItem>, options: SearchOptions = {}): Promise<SearchResult> {
-    return this.searchEngine.searchDataInStore(storeName, query, options);
+  async searchDataInStore<S extends DatabaseItem = DatabaseItem>(storeName: string, query: Partial<S>, options: SearchOptions = {}): Promise<SearchResult<S>> {
+    return this.searchEngine.searchDataInStore(storeName, query as any, options) as Promise<SearchResult<S>>;
   }
 
-  async filterInStore(storeName: string, criteria: FilterCriteria): Promise<DatabaseItem[]> {
-    return this.searchEngine.filterInStore(storeName, criteria);
+  async filterInStore<S extends DatabaseItem = DatabaseItem>(storeName: string, criteria: FilterCriteria): Promise<S[]> {
+    return this.searchEngine.filterInStore(storeName, criteria) as Promise<S[]>;
   }
 
-  async addManyToStore(storeName: string, items: Partial<DatabaseItem>[]): Promise<boolean> {
-    return this.batchOperations.addManyToStore(storeName, items);
+  async addManyToStore<S extends DatabaseItem = DatabaseItem>(storeName: string, items: Partial<S>[]): Promise<boolean> {
+    return this.batchOperations.addManyToStore(storeName, items as any);
   }
 
-  async updateManyInStore(storeName: string, items: DatabaseItem[]): Promise<boolean> {
+  async updateManyInStore<S extends DatabaseItem = DatabaseItem>(storeName: string, items: S[]): Promise<boolean> {
     return this.batchOperations.updateManyInStore(storeName, items);
   }
 
@@ -340,8 +339,8 @@ export class IndexedDBManager {
     return this.batchOperations.deleteManyFromStore(storeName, ids);
   }
 
-  async getManyFromStore(storeName: string, ids: (string | number)[]): Promise<DatabaseItem[]> {
-    return this.databaseOperations.getManyFromStore(storeName, ids);
+  async getManyFromStore<S extends DatabaseItem = DatabaseItem>(storeName: string, ids: (string | number)[]): Promise<S[]> {
+    return this.databaseOperations.getManyFromStore(storeName, ids) as Promise<S[]>;
   }
 
   async getStatsForStore(storeName: string): Promise<DatabaseStats> {
@@ -356,39 +355,39 @@ export class IndexedDBManager {
     return this.idExistsInStore(this.dbConfig.store, id);
   }
 
-  async updateDataById(id: string | number, updatedData: Partial<DatabaseItem>): Promise<DatabaseItem | null> {
-    return this.databaseOperations.updateDataByIdInStore(this.dbConfig.store, id, updatedData);
+  async updateDataById(id: string | number, updatedData: Partial<T>): Promise<T | null> {
+    return this.databaseOperations.updateDataByIdInStore(this.dbConfig.store, id, updatedData) as Promise<T | null>;
   }
 
-  async getDataById(id: string | number): Promise<DatabaseItem | null> {
-    return this.databaseOperations.getDataByIdFromStore(this.dbConfig.store, id);
+  async getDataById(id: string | number): Promise<T | null> {
+    return this.databaseOperations.getDataByIdFromStore(this.dbConfig.store, id) as Promise<T | null>;
   }
 
-  async saveData(data: Partial<CreateDatabaseItem>): Promise<DatabaseItem> {
-    return this.databaseOperations.saveDataToStore(this.dbConfig.store, data);
+  async saveData(data: Partial<T>): Promise<T> {
+    return this.databaseOperations.saveDataToStore(this.dbConfig.store, data) as Promise<T>;
   }
 
   async deleteData(id: string | number): Promise<string | number> {
     return this.databaseOperations.deleteDataFromStore(this.dbConfig.store, id);
   }
 
-  async getAllData(): Promise<DatabaseItem[]> {
-    return this.databaseOperations.getAllDataFromStore(this.dbConfig.store);
+  async getAllData(): Promise<T[]> {
+    return this.databaseOperations.getAllDataFromStore(this.dbConfig.store) as Promise<T[]>;
   }
 
-  async searchData(query: Partial<DatabaseItem>, options: SearchOptions = {}): Promise<SearchResult> {
-    return this.searchEngine.searchDataInStore(this.dbConfig.store, query, options);
+  async searchData(query: Partial<T>, options: SearchOptions = {}): Promise<SearchResult<T>> {
+    return this.searchEngine.searchDataInStore(this.dbConfig.store, query as any, options) as Promise<SearchResult<T>>;
   }
 
   async clearDatabase(): Promise<void> {
     return this.databaseOperations.clearStore(this.dbConfig.store);
   }
 
-  async get(id: string | number): Promise<DatabaseItem | null> {
+  async get(id: string | number): Promise<T | null> {
     return this.getDataById(id);
   }
 
-  async update(item: DatabaseItem): Promise<DatabaseItem> {
+  async update(item: T): Promise<T> {
     const result = await this.updateDataById(item.id, item);
     if (!result) {
       throw new Error(`Item with id ${item.id} not found`);
@@ -409,23 +408,25 @@ export class IndexedDBManager {
     await this.clearDatabase();
   }
 
-  async search(query: string, options?: SearchTextOptions): Promise<DatabaseItem[]> {
+  async search(query: string, options?: SearchTextOptions): Promise<T[]> {
     const allData = await this.getAllData();
-    return this.searchEngine.search(allData, query, options);
+    return this.searchEngine.search(allData, query, options) as Promise<T[]>;
   }
 
-  async filter(criteria: FilterCriteria): Promise<DatabaseItem[]> {
-    return this.searchEngine.filterInStore(this.dbConfig.store, criteria);
+  async filter(criteria: FilterCriteria): Promise<T[]> {
+    return this.searchEngine.filterInStore(this.dbConfig.store, criteria) as Promise<T[]>;
   }
 
-  async getMany(ids: (string | number)[]): Promise<DatabaseItem[]> {
-    return this.databaseOperations.getManyFromStore(this.dbConfig.store, ids);
+  async getMany(ids: (string | number)[]): Promise<T[]> {
+    return this.databaseOperations.getManyFromStore(this.dbConfig.store, ids) as Promise<T[]>;
   }
 
   async getStats(): Promise<DatabaseStats> {
     return this.databaseOperations.getStatsForStore(this.dbConfig.store);
   }
-
+  async open(){
+    return this.openDatabase();
+  }
   async openDatabase(): Promise<any> {
     this.db = await this.transactionManager.openDatabase();
     this.syncModules();
