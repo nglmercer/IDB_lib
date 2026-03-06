@@ -24,6 +24,9 @@ declare global {
       // Función para mostrar mensajes de estado
       function showStatus(message: string, type: string = "success") {
         const statusEl = document.getElementById("status");
+        if (!statusEl) {
+          return;
+        }
         statusEl.textContent = message;
         statusEl.className = `status ${type}`;
         statusEl.style.display = "block";
@@ -36,10 +39,21 @@ declare global {
       function addOutput(elementId: string, content: string) {
         const outputEl = document.getElementById(elementId);
         const timestamp = new Date().toLocaleTimeString();
+        if (!outputEl) {
+          return;
+        }
         outputEl.innerHTML += `[${timestamp}] ${content}\n`;
         outputEl.scrollTop = outputEl.scrollHeight;
       }
-
+      function ErrorMSG(error: any) {
+        if (error instanceof Error) {
+          return ErrorMSG(error);
+        } else if (typeof error === "string") {
+          return error;
+        } else {
+          return String(error);
+        }
+      }
       // Inicializar base de datos
       async function initializeDB() {
         try {
@@ -60,7 +74,7 @@ declare global {
           });
 
           dbManager.on("error", (error: any) => {
-            addOutput("eventsOutput", `❌ Error: ${error.message}`);
+            addOutput("eventsOutput", `❌ Error: ${ErrorMSG(error)}`);
           });
 
           dbManager.on("add", (data: any) => {
@@ -85,8 +99,8 @@ declare global {
           );
           showStatus("Base de datos inicializada correctamente");
         } catch (error) {
-          addOutput("dbOutput", `Error: ${error.message}`);
-          showStatus(`Error: ${error.message}`, "error");
+          addOutput("dbOutput", `Error: ${ErrorMSG(error)}`);
+          showStatus(`Error: ${ErrorMSG(error)}`, "error");
         }
       }
       window.initializeDB = initializeDB;
@@ -102,8 +116,8 @@ declare global {
           addOutput("dbOutput", "Base de datos limpiada");
           showStatus("Base de datos limpiada correctamente");
         } catch (error) {
-          addOutput("dbOutput", `Error: ${error.message}`);
-          showStatus(`Error: ${error.message}`, "error");
+          addOutput("dbOutput", `Error: ${ErrorMSG(error)}`);
+          showStatus(`Error: ${ErrorMSG(error)}`, "error");
         }
       }
       window.clearDatabase = clearDatabase;
@@ -130,8 +144,8 @@ declare global {
           addOutput("crudOutput", `Agregado: ${JSON.stringify(data)}`);
           showStatus("Item agregado correctamente");
         } catch (error) {
-          addOutput("crudOutput", `Error: ${error.message}`);
-          showStatus(`Error: ${error.message}`, "error");
+          addOutput("crudOutput", `Error: ${ErrorMSG(error)}`);
+          showStatus(`Error: ${ErrorMSG(error)}`, "error");
         }
       }
       window.addItem = addItem;
@@ -161,8 +175,8 @@ declare global {
             );
           }
         } catch (error) {
-          addOutput("crudOutput", `Error: ${error.message}`);
-          showStatus(`Error: ${error.message}`, "error");
+          addOutput("crudOutput", `Error: ${ErrorMSG(error)}`);
+          showStatus(`Error: ${ErrorMSG(error)}`, "error");
         }
       }
       window.getItem = getItem;
@@ -189,8 +203,8 @@ declare global {
           addOutput("crudOutput", `Actualizado: ${JSON.stringify(data)}`);
           showStatus("Item actualizado correctamente");
         } catch (error) {
-          addOutput("crudOutput", `Error: ${error.message}`);
-          showStatus(`Error: ${error.message}`, "error");
+          addOutput("crudOutput", `Error: ${ErrorMSG(error)}`);
+          showStatus(`Error: ${ErrorMSG(error)}`, "error");
         }
       }
       window.updateItem = updateItem;
@@ -213,8 +227,8 @@ declare global {
           addOutput("crudOutput", `Eliminado: ${id}`);
           showStatus("Item eliminado correctamente");
         } catch (error) {
-          addOutput("crudOutput", `Error: ${error.message}`);
-          showStatus(`Error: ${error.message}`, "error");
+          addOutput("crudOutput", `Error: ${ErrorMSG(error)}`);
+          showStatus(`Error: ${ErrorMSG(error)}`, "error");
         }
       }
       window.deleteItem = deleteItem;
@@ -266,8 +280,8 @@ declare global {
           );
           showStatus("Datos de prueba agregados correctamente");
         } catch (error) {
-          addOutput("batchOutput", `Error: ${error.message}`);
-          showStatus(`Error: ${error.message}`, "error");
+          addOutput("batchOutput", `Error: ${ErrorMSG(error)}`);
+          showStatus(`Error: ${ErrorMSG(error)}`, "error");
         }
       }
       window.addData = addData;
@@ -283,8 +297,8 @@ declare global {
           addOutput("batchOutput", `Total de items: ${items.length}`);
           addOutput("batchOutput", JSON.stringify(items, null, 2));
         } catch (error) {
-          addOutput("batchOutput", `Error: ${error.message}`);
-          showStatus(`Error: ${error.message}`, "error");
+          addOutput("batchOutput", `Error: ${ErrorMSG(error)}`);
+          showStatus(`Error: ${ErrorMSG(error)}`, "error");
         }
       }
       window.getAllItems = getAllItems;
@@ -310,8 +324,8 @@ declare global {
           );
           addOutput("batchOutput", JSON.stringify(results, null, 2));
         } catch (error) {
-          addOutput("batchOutput", `Error: ${error.message}`);
-          showStatus(`Error: ${error.message}`, "error");
+          addOutput("batchOutput", `Error: ${ErrorMSG(error)}`);
+          showStatus(`Error: ${ErrorMSG(error)}`, "error");
         }
       }
       window.searchItems = searchItems;
@@ -330,8 +344,8 @@ declare global {
           );
           showStatus("Datos exportados correctamente");
         } catch (error) {
-          addOutput("importExportOutput", `Error: ${error.message}`);
-          showStatus(`Error: ${error.message}`, "error");
+          addOutput("importExportOutput", `Error: ${ErrorMSG(error)}`);
+          showStatus(`Error: ${ErrorMSG(error)}`, "error");
         }
       }
       window.exportData = exportData;
@@ -347,8 +361,8 @@ declare global {
           addOutput("importExportOutput", "Backup descargado");
           showStatus("Backup descargado correctamente");
         } catch (error) {
-          addOutput("importExportOutput", `Error: ${error.message}`);
-          showStatus(`Error: ${error.message}`, "error");
+          addOutput("importExportOutput", `Error: ${ErrorMSG(error)}`);
+          showStatus(`Error: ${ErrorMSG(error)}`, "error");
         }
       }
       window.downloadBackup = downloadBackup;
@@ -374,8 +388,8 @@ declare global {
           );
           showStatus("Datos importados correctamente");
         } catch (error) {
-          addOutput("importExportOutput", `Error: ${error.message}`);
-          showStatus(`Error: ${error.message}`, "error");
+          addOutput("importExportOutput", `Error: ${ErrorMSG(error)}`);
+          showStatus(`Error: ${ErrorMSG(error)}`, "error");
         }
       }
       window.importData = importData;
@@ -393,8 +407,8 @@ declare global {
             `Estadísticas: ${JSON.stringify(stats, null, 2)}`,
           );
         } catch (error) {
-          addOutput("eventsOutput", `Error: ${error.message}`);
-          showStatus(`Error: ${error.message}`, "error");
+          addOutput("eventsOutput", `Error: ${ErrorMSG(error)}`);
+          showStatus(`Error: ${ErrorMSG(error)}`, "error");
         }
       }
       window.getStats = getStats;
