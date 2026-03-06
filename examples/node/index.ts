@@ -7,9 +7,9 @@
  * Run with: bun run examples/node/index.ts
  */
 
-import { IndexedDBManager } from '../../src/index.js';
-import { NodeAdapter } from '../../src/adapters/node.js';
-import type { DatabaseItem } from '../../src/types/index.js';
+import { IndexedDBManager } from 'idb-manager';
+import { NodeAdapter } from 'idb-manager/node';
+import type { DatabaseItem } from 'idb-manager';
 
 // Define a type for our data
 interface User extends DatabaseItem {
