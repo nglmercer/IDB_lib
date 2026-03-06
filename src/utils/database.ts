@@ -1,5 +1,5 @@
 import type { DatabaseConfig, DatabaseItem, ImportOptions, ExportOptions, CreateDatabaseItem } from '../types/index.js';
-import { downloadJSON, readJSONFile, convertToCSV } from './helpers.js';
+import { downloadJSON, readJSONFile } from './helpers.js';
 import type { StorageAdapter } from '../adapters/types.js';
 import { BrowserAdapter } from '../adapters/browser.js';
 import { NodeAdapter } from '../adapters/node.js';
@@ -126,7 +126,7 @@ export async function exportDataFromDatabase(
   options: ExportOptions = {},
   adapter: StorageAdapter = defaultAdapter
 ): Promise<void> {
-  const { format = 'json', filename, filters } = options;
+  const { filename, filters } = options;
   
   try {
     let data = await getAllDataFromDatabase(databaseConfig, adapter);
@@ -146,23 +146,7 @@ export async function exportDataFromDatabase(
     const timestamp = new Date().toISOString().split('T')[0];
     const defaultFilename = filename || `${databaseConfig.name}_${databaseConfig.store}_${timestamp}`;
     
-    if (format === 'csv') {
-      const csvContent = convertToCSV(data);
-      
-      // Check if we're in browser or Node
-      if (typeof window !== 'undefined' && typeof document !== 'undefined') {
-        const blob = new Blob([csvContent], { type: 'text/csv' });
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement('a');
-        link.href = url;
-        link.download = `${defaultFilename}.csv`;
-        link.click();
-        URL.revokeObjectURL(url);
-      } else {
-        // Node environment - just log or return the data
-        console.log('CSV export in Node environment - data:', csvContent.substring(0, 100) + '...');
-      }
-    } else {
+
       // Check if we're in browser or Node
       if (typeof window !== 'undefined') {
         downloadJSON(data, `${defaultFilename}.json`);
@@ -170,7 +154,7 @@ export async function exportDataFromDatabase(
         // Node environment - just log or return the data
         console.log('JSON export in Node environment - data length:', data.length);
       }
-    }
+    
   } catch (error) {
     console.error('Error exporting data:', error);
     throw error;

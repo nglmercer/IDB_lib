@@ -388,39 +388,3 @@ export function throttle<T extends (...args: any[]) => any>(
     }
   };
 }
-
-/**
- * Convierte datos a CSV
- */
-export function convertToCSV(data: DatabaseItem[]): string {
-  if (data.length === 0) {
-    return '';
-  }
-  
-  // Usar el orden de propiedades del primer objeto, luego agregar las demás ordenadas
-  const firstItemHeaders = data[0] && typeof data[0] === 'object' ? Object.keys(data[0]) : [];
-  const allHeaders = new Set<string>();
-  data.forEach(item => {
-    if (item && typeof item === 'object') {
-      Object.keys(item).forEach(key => allHeaders.add(key));
-    }
-  });
-  
-  // Mantener el orden del primer objeto, luego agregar las propiedades restantes ordenadas
-  const remainingHeaders = Array.from(allHeaders).filter(h => !firstItemHeaders.includes(h)).sort();
-  const headers = [...firstItemHeaders, ...remainingHeaders];
-  const csvHeaders = headers.join(',');
-  
-  const csvRows = data.map(item => {
-    return headers.map(header => {
-      const value = item?.[header] ?? '';
-      // Escapar comillas y envolver en comillas si contiene comas
-      if (typeof value === 'string' && (value.includes(',') || value.includes('"'))) {
-        return `"${value.replace(/"/g, '""')}"`;
-      }
-      return value;
-    }).join(',');
-  });
-  
-  return [csvHeaders, ...csvRows].join('\n');
-}

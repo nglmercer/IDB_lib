@@ -224,7 +224,7 @@ export interface ImportOptions {
 /** Opciones para exportar datos */
 export interface ExportOptions {
   /** Formato de exportación */
-  format?: 'json' | 'csv';
+  format?: 'json';
   /** Nombre del archivo */
   filename?: string;
   /** Filtros a aplicar a los datos */

@@ -27,8 +27,7 @@ export {
   validateDatabaseConfig,
   createTimestamp,
   debounce,
-  throttle,
-  convertToCSV
+  throttle
 } from './utils/helpers.js';
 
 // Exportar funciones de base de datos

@@ -479,32 +479,6 @@ function throttle(func, limit) {
     }
   };
 }
-function convertToCSV(data) {
-  if (data.length === 0) {
-    return "";
-  }
-  const firstItemHeaders = data[0] && typeof data[0] === "object" ? Object.keys(data[0]) : [];
-  const allHeaders = new Set;
-  data.forEach((item) => {
-    if (item && typeof item === "object") {
-      Object.keys(item).forEach((key) => allHeaders.add(key));
-    }
-  });
-  const remainingHeaders = Array.from(allHeaders).filter((h) => !firstItemHeaders.includes(h)).sort();
-  const headers = [...firstItemHeaders, ...remainingHeaders];
-  const csvHeaders = headers.join(",");
-  const csvRows = data.map((item) => {
-    return headers.map((header) => {
-      const value = item?.[header] ?? "";
-      if (typeof value === "string" && (value.includes(",") || value.includes('"'))) {
-        return `"${value.replace(/"/g, '""')}"`;
-      }
-      return value;
-    }).join(",");
-  });
-  return [csvHeaders, ...csvRows].join(`
-`);
-}
 
 // src/adapters/browser.ts
 class BrowserAdapter {
@@ -2087,26 +2061,13 @@ async function exportDataFromDatabase(databaseConfig, options = {}, adapter = de
     }
     const timestamp = new Date().toISOString().split("T")[0];
     const defaultFilename = filename || `${databaseConfig.name}_${databaseConfig.store}_${timestamp}`;
-    if (format2 === "csv") {
-      const csvContent = convertToCSV(data);
-      if (typeof window !== "undefined" && typeof document !== "undefined") {
-        const blob = new Blob([csvContent], { type: "text/csv" });
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement("a");
-        link.href = url;
-        link.download = `${defaultFilename}.csv`;
-        link.click();
-        URL.revokeObjectURL(url);
-      } else {
-        console.log("CSV export in Node environment - data:", csvContent.substring(0, 100) + "...");
-      }
-    } else {
+
       if (typeof window !== "undefined") {
         downloadJSON(data, `${defaultFilename}.json`);
       } else {
         console.log("JSON export in Node environment - data length:", data.length);
       }
-    }
+    
   } catch (error) {
     console.error("Error exporting data:", error);
     throw error;
