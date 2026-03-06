@@ -1,5 +1,6 @@
 // Re-export from modular structure for backward compatibility
-export { BrowserAdapter, default } from './browser/index.js';
+export { BrowserAdapter } from './browser/index.js';
+export { MemoryAdapter } from './memory.js';
 export { 
   TransactionManager, 
   createTransaction, 

@@ -28,7 +28,7 @@ import type {
   DatabaseSchema
 } from '../types/index.js';
 import type { StorageAdapter } from '../adapters/types.js';
-import { BrowserAdapter } from '../adapters/browser.js';
+import { MemoryAdapter } from '../adapters/memory.js';
 
 // Re-export for convenience
 export { SchemaManager, StoreProxy };
@@ -55,7 +55,7 @@ export class IndexedDBManager {
     options?: IndexedDBManagerOptions & { adapter?: StorageAdapter }
   ) {
     this.isNodeEnvironment = typeof window === 'undefined';
-    this.adapter = options?.adapter || new BrowserAdapter();
+    this.adapter = options?.adapter || new MemoryAdapter();
 
     if ('stores' in dbConfig) {
       this.schemaManager.setSchema(dbConfig);
@@ -159,7 +159,7 @@ export class IndexedDBManager {
 
   setAdapter(adapter: StorageAdapter): void {
     this.adapter = adapter;
-    this.isNodeEnvironment = !(adapter instanceof BrowserAdapter);
+    this.isNodeEnvironment = false; // MemoryAdapter works in all environments
     this.syncModules();
   }
 
