@@ -1,6 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import type { StorageAdapter } from './types.js';
+import type { StorageAdapter, StoreInfo, BatchItem, DatabaseInfo } from './types.js';
 
 interface NodeDBStore {
   name: string;
@@ -21,6 +21,7 @@ export class NodeAdapter implements StorageAdapter {
   private databases: Map<string, NodeDatabase> = new Map();
   private dbPath: string;
   private inMemoryMode: boolean;
+  private upgradeHandlers: Map<string, any> = new Map();
 
   constructor(dbPath: string = './data', options?: { inMemory?: boolean }) {
     this.dbPath = dbPath;
@@ -69,8 +70,20 @@ export class NodeAdapter implements StorageAdapter {
       };
     }
 
+    // Call upgrade handler if exists
+    const handler = this.upgradeHandlers.get(name);
+    if (handler) {
+      // Note: In Node.js there's no real upgrade event, but we call the handler
+      // to allow for custom initialization
+      handler({ oldVersion: 0, newVersion: version });
+    }
+
     this.databases.set(name, db);
     return db;
+  }
+
+  onUpgrade(name: string, handler: any): void {
+    this.upgradeHandlers.set(name, handler);
   }
 
   transaction(storeName: string, mode: 'readonly' | 'readwrite'): any {
@@ -84,8 +97,8 @@ export class NodeAdapter implements StorageAdapter {
 
     const store: NodeDBStore = {
       name,
-      keyPath: options.keyPath || 'id',
-      autoIncrement: options.autoIncrement || false,
+      keyPath: options?.keyPath || 'id',
+      autoIncrement: options?.autoIncrement || false,
       data: new Map(),
       indexes: new Map()
     };
@@ -97,7 +110,33 @@ export class NodeAdapter implements StorageAdapter {
     return store;
   }
 
-  async get(storeInfo: { db: NodeDatabase; storeName: string }, key: any): Promise<any> {
+  createIndex(_db: any, storeName: string, indexName: string, keyPath: any, _options?: any): any {
+    // Indexes are stored in memory only for Node adapter
+    const db = this.databases.get(storeName) || _db;
+    if (db && db.stores) {
+      const store = db.stores.get(storeName);
+      if (store) {
+        store.indexes.set(indexName, { keyPath });
+      }
+    }
+    return { name: indexName, keyPath };
+  }
+
+  deleteIndex(_db: any, storeName: string, indexName: string): void {
+    const db = this.databases.get(storeName) || _db;
+    if (db && db.stores) {
+      const store = db.stores.get(storeName);
+      if (store) {
+        store.indexes.delete(indexName);
+      }
+    }
+  }
+
+  getObjectStoreNames(db: any): string[] {
+    return Array.from(db.stores.keys());
+  }
+
+  async get(storeInfo: StoreInfo, key: any): Promise<any> {
     const store = storeInfo.db.stores.get(storeInfo.storeName);
     if (!store) return null;
     
@@ -105,21 +144,68 @@ export class NodeAdapter implements StorageAdapter {
     return store.data.get(keyStr) || null;
   }
 
-  async put(storeInfo: { db: NodeDatabase; storeName: string }, value: any): Promise<any> {
+  async getMany(storeInfo: StoreInfo, keys: any[]): Promise<any[]> {
+    const store = storeInfo.db.stores.get(storeInfo.storeName);
+    if (!store) return keys.map(() => null);
+    
+    return keys.map(key => {
+      const keyStr = String(key);
+      return store.data.get(keyStr) || null;
+    });
+  }
+
+  async put(storeInfo: StoreInfo, value: any, key?: any): Promise<any> {
     const store = storeInfo.db.stores.get(storeInfo.storeName);
     if (!store) throw new Error(`Store ${storeInfo.storeName} not found`);
     
-    const key = value[store.keyPath];
-    const keyStr = String(key);
+    const effectiveKey = key ?? value[store.keyPath];
+    const keyStr = String(effectiveKey);
     store.data.set(keyStr, value);
     
     if (!this.inMemoryMode) {
       this.saveDatabase(storeInfo.db);
     }
-    return key;
+    return effectiveKey;
   }
 
-  async delete(storeInfo: { db: NodeDatabase; storeName: string }, key: any): Promise<any> {
+  async putMany(storeInfo: StoreInfo, items: BatchItem[]): Promise<any[]> {
+    const store = storeInfo.db.stores.get(storeInfo.storeName);
+    if (!store) throw new Error(`Store ${storeInfo.storeName} not found`);
+    
+    const keys: any[] = [];
+    for (const item of items) {
+      const effectiveKey = item.key ?? item.value[store.keyPath];
+      const keyStr = String(effectiveKey);
+      store.data.set(keyStr, item.value);
+      keys.push(effectiveKey);
+    }
+    
+    if (!this.inMemoryMode) {
+      this.saveDatabase(storeInfo.db);
+    }
+    return keys;
+  }
+
+  async add(storeInfo: StoreInfo, value: any, key?: any): Promise<any> {
+    const store = storeInfo.db.stores.get(storeInfo.storeName);
+    if (!store) throw new Error(`Store ${storeInfo.storeName} not found`);
+    
+    const effectiveKey = key ?? value[store.keyPath];
+    const keyStr = String(effectiveKey);
+    
+    if (store.data.has(keyStr)) {
+      throw new Error(`Key ${effectiveKey} already exists`);
+    }
+    
+    store.data.set(keyStr, value);
+    
+    if (!this.inMemoryMode) {
+      this.saveDatabase(storeInfo.db);
+    }
+    return effectiveKey;
+  }
+
+  async delete(storeInfo: StoreInfo, key: any): Promise<any> {
     const store = storeInfo.db.stores.get(storeInfo.storeName);
     if (!store) throw new Error(`Store ${storeInfo.storeName} not found`);
     
@@ -132,13 +218,35 @@ export class NodeAdapter implements StorageAdapter {
     return key;
   }
 
-  async getAll(storeInfo: { db: NodeDatabase; storeName: string }): Promise<any[]> {
+  async deleteMany(storeInfo: StoreInfo, keys: any[]): Promise<void> {
+    const store = storeInfo.db.stores.get(storeInfo.storeName);
+    if (!store) throw new Error(`Store ${storeInfo.storeName} not found`);
+    
+    for (const key of keys) {
+      const keyStr = String(key);
+      store.data.delete(keyStr);
+    }
+    
+    if (!this.inMemoryMode) {
+      this.saveDatabase(storeInfo.db);
+    }
+  }
+
+  async getAll(storeInfo: StoreInfo): Promise<any[]> {
     const store = storeInfo.db.stores.get(storeInfo.storeName);
     if (!store) return [];
     return Array.from(store.data.values());
   }
 
-  async clear(storeInfo: { db: NodeDatabase; storeName: string }): Promise<void> {
+  async getAllFromIndex(storeInfo: StoreInfo, _indexName: string, _query?: any): Promise<any[]> {
+    const store = storeInfo.db.stores.get(storeInfo.storeName);
+    if (!store) return [];
+    
+    // For Node adapter, we return all values if index doesn't exist in memory
+    return Array.from(store.data.values());
+  }
+
+  async clear(storeInfo: StoreInfo): Promise<void> {
     const store = storeInfo.db.stores.get(storeInfo.storeName);
     if (!store) throw new Error(`Store ${storeInfo.storeName} not found`);
     
@@ -149,10 +257,24 @@ export class NodeAdapter implements StorageAdapter {
     }
   }
 
-  async count(storeInfo: { db: NodeDatabase; storeName: string }): Promise<number> {
+  async count(storeInfo: StoreInfo, _query?: any): Promise<number> {
     const store = storeInfo.db.stores.get(storeInfo.storeName);
     if (!store) return 0;
     return store.data.size;
+  }
+
+  async iterate(_storeInfo: StoreInfo, callback: any, _options?: any): Promise<void> {
+    const store = _storeInfo.db.stores.get(_storeInfo.storeName);
+    if (!store) return;
+    
+    for (const value of store.data.values()) {
+      const result = callback(value, null);
+      if (result === false) break;
+    }
+  }
+
+  async searchByIndex(storeInfo: StoreInfo, _indexName: string, _query: any, _limit?: number): Promise<any[]> {
+    return this.getAll(storeInfo);
   }
 
   close(db: NodeDatabase): void {
@@ -162,7 +284,7 @@ export class NodeAdapter implements StorageAdapter {
     }
   }
 
-  deleteDatabase(name: string): void {
+  async deleteDatabase(name: string): Promise<void> {
     const filePath = path.join(this.dbPath, `${name}.json`);
     if (fs.existsSync(filePath)) {
       fs.unlinkSync(filePath);
@@ -170,7 +292,7 @@ export class NodeAdapter implements StorageAdapter {
     this.databases.delete(name);
   }
 
-  clearAll(): void {
+  async clearAll(): Promise<void> {
     for (const [name, db] of this.databases.entries()) {
       for (const store of db.stores.values()) {
         store.data.clear();
@@ -183,6 +305,32 @@ export class NodeAdapter implements StorageAdapter {
       }
     }
     this.databases.clear();
+  }
+
+  async getDatabaseNames(): Promise<string[]> {
+    if (!fs.existsSync(this.dbPath)) return [];
+    
+    const files = fs.readdirSync(this.dbPath);
+    return files
+      .filter(f => f.endsWith('.json'))
+      .map(f => f.replace('.json', ''));
+  }
+
+  async getDatabaseInfo(): Promise<DatabaseInfo[]> {
+    const names = await this.getDatabaseNames();
+    return names.map(name => {
+      const filePath = path.join(this.dbPath, `${name}.json`);
+      if (fs.existsSync(filePath)) {
+        const data = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+        return { name, version: data.version || 1 };
+      }
+      return { name, version: 1 };
+    });
+  }
+
+  async databaseExists(name: string): Promise<boolean> {
+    const names = await this.getDatabaseNames();
+    return names.includes(name);
   }
 
   private saveDatabase(db: NodeDatabase): void {
