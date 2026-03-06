@@ -34,7 +34,7 @@ const dbConfig = {
 };
 
 // Create IndexedDBManager with the NodeAdapter
-const db = new IndexedDBManager(dbConfig, {
+const db = new IndexedDBManager<User>(dbConfig, {
   adapter: nodeAdapter
 });
 
@@ -189,13 +189,20 @@ async function runExamples() {
   db.on('add', (data) => {
     console.log(`  [Event] User added:`, data);
   });
-
+  db.on('addMany', (data) => {
+    console.log(`  [Event] Users added:`, data);
+  });
   db.on('update', (data) => {
     console.log(`  [Event] User updated:`, data);
   });
-
+  db.on('updateMany', (data) => {
+    console.log(`  [Event] Users updated:`, data);
+  });
   db.on('delete', (id) => {
     console.log(`  [Event] User deleted:`, id);
+  });
+  db.on('deleteMany', (data) => {
+    console.log(`  [Event] Users deleted:`, data);
   });
 
   // Trigger an event

@@ -32,7 +32,6 @@
     "test:watch": "bun test --watch",
     "test:coverage": "bun test --coverage",
     "clean": "rimraf dist",
-    "serve": "bun run dev serve",
     "lint": "eslint src/**/*.ts",
     "format": "prettier --write src/**/*.ts",
     "prepublishOnly": "bun run build && bun run test",
