@@ -49,9 +49,27 @@ export class TransactionManager {
     return this.db;
   }
 
-  async openDatabase(): Promise<any> {
-    if (this.db) return this.db;
+  private dbOpenPromise: Promise<any> | null = null;
 
+  async openDatabase(): Promise<any> {
+    // If already open, return existing instance
+    if (this.db) return this.db;
+    
+    // If opening in progress, return the same promise to avoid race conditions
+    if (this.dbOpenPromise) return this.dbOpenPromise;
+
+    this.dbOpenPromise = this._doOpenDatabase();
+    
+    try {
+      this.db = await this.dbOpenPromise;
+    } finally {
+      this.dbOpenPromise = null;
+    }
+    
+    return this.db;
+  }
+
+  private async _doOpenDatabase(): Promise<any> {
     if (this.isNodeEnvironment) {
       this.db = await this.adapter.openDatabase(this.dbConfig.name, this.dbConfig.version);
       

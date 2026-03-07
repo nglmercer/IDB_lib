@@ -1,0 +1,8 @@
+{
+  "name": "profile-sync-example",
+  "type": "module",
+  "scripts": {
+    "server": "bun run server/index.ts",
+    "client": "bun run client/index.ts"
+  }
+}

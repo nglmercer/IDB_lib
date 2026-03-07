@@ -1,6 +1,7 @@
     
       import { IndexedDBManager } from "../../dist/esm/index.js";
-      let dbManager: any = null;
+      import { BrowserAdapter } from "../../dist/esm/browser.js";
+      let dbManager: IndexedDBManager | null = null;
 
 declare global {
   interface Window {
@@ -65,8 +66,8 @@ declare global {
             version: 1,
             store: storeName,
           };
-
-          dbManager = new IndexedDBManager(config);
+          const adapter = new BrowserAdapter();
+          dbManager = new IndexedDBManager(config, { adapter });
 
           // Configurar eventos
           dbManager.on("ready", () => {
@@ -337,7 +338,7 @@ declare global {
         }
 
         try {
-          const exportedData = await dbManager.exportData();
+          const exportedData = await dbManager.getAllData();
           addOutput(
             "importExportOutput",
             `Datos exportados: ${JSON.stringify(exportedData, null, 2)}`,
@@ -381,7 +382,7 @@ declare global {
             return;
           }
 
-          await dbManager.importData(file);
+          await dbManager.setDatabase(file);
           addOutput(
             "importExportOutput",
             `Datos importados desde: ${file.name}`,
