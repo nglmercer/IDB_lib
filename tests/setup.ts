@@ -15,34 +15,139 @@ class MockIDBRequest {
   onerror: ((event: any) => void) | null = null;
   readyState: string = 'pending';
   transaction?: MockIDBTransaction;
+  source?: any;
 
   constructor(result?: any, error?: any, transaction?: MockIDBTransaction) {
     this.transaction = transaction;
-    setTimeout(() => {
-      if (error) {
-        this.error = error;
-        this.readyState = 'done';
-        if (this.onerror) {
-          this.onerror({ target: this });
+    const hasResult = arguments.length > 0;
+    if (hasResult) this.result = result;
+    
+    // Open requests handle their own timing
+    if (this.constructor.name !== 'MockIDBOpenDBRequest') {
+      setTimeout(() => {
+        if (error) {
+          this.error = error;
+          this.readyState = 'done';
+          if (this.onerror) {
+            this.onerror({ target: this });
+          }
+          if (this.transaction) {
+            this.transaction._triggerError(error);
+          }
+        } else {
+          this.readyState = 'done';
+          if (this.onsuccess) {
+            this.onsuccess({ target: this });
+          }
+          // Complete transaction after successful operation
+          if (this.transaction) {
+            setTimeout(() => {
+              this.transaction!._complete();
+            }, 0);
+          }
         }
-        if (this.transaction) {
-          this.transaction._triggerError(error);
-        }
+      }, 0);
+    }
+  }
+}
+
+class MockIDBKeyRange {
+  lower: any;
+  upper: any;
+  lowerOpen: boolean;
+  upperOpen: boolean;
+
+  constructor(lower?: any, upper?: any, lowerOpen?: boolean, upperOpen?: boolean) {
+    this.lower = lower;
+    this.upper = upper;
+    this.lowerOpen = lowerOpen || false;
+    this.upperOpen = upperOpen || false;
+  }
+
+  static lowerBound(lower: any, open?: boolean): MockIDBKeyRange {
+    return new MockIDBKeyRange(lower, undefined, open, false);
+  }
+
+  static upperBound(upper: any, open?: boolean): MockIDBKeyRange {
+    return new MockIDBKeyRange(undefined, upper, false, open);
+  }
+
+  static bound(lower: any, upper: any, lowerOpen?: boolean, upperOpen?: boolean): MockIDBKeyRange {
+    return new MockIDBKeyRange(lower, upper, lowerOpen, upperOpen);
+  }
+
+  static only(value: any): MockIDBKeyRange {
+    return new MockIDBKeyRange(value, value, false, false);
+  }
+
+  contains(key: any): boolean {
+    if (this.lower !== undefined) {
+      const lowerComparison = this.lowerOpen ? key > this.lower : key >= this.lower;
+      if (!lowerComparison) return false;
+    }
+    if (this.upper !== undefined) {
+      const upperComparison = this.upperOpen ? key < this.upper : key <= this.upper;
+      if (!upperComparison) return false;
+    }
+    return true;
+  }
+}
+
+class MockIDBCursor {
+  request: MockIDBRequest;
+  data: any[];
+  index: number = 0;
+  direction: string;
+  keyPath: string | string[];
+  source: any;
+  value: any = null;
+  key: any = null;
+  primaryKey: any = null;
+
+  constructor(request: MockIDBRequest, data: any[], direction: string = 'next', keyPath: string | string[], source: any) {
+    this.request = request;
+    this.data = data;
+    this.direction = direction;
+    this.keyPath = keyPath;
+    this.source = source;
+    this._update();
+  }
+
+  _update() {
+    if (this.index < this.data.length) {
+      const item = this.data[this.index];
+      this.value = item;
+      this.primaryKey = item[this.source.objectStore?.keyPath || this.source.keyPath || 'id'];
+      
+      if (Array.isArray(this.keyPath)) {
+        this.key = this.keyPath.map(p => item[p]).join('|');
       } else {
-        this.result = result;
-        this.readyState = 'done';
-        if (this.onsuccess) {
-          this.onsuccess({ target: this });
-        }
-        // Complete transaction after successful operation
-        if (this.transaction) {
-          setTimeout(() => {
-            this.transaction!._complete();
-          }, 0);
-        }
+        this.key = item[this.keyPath as string];
+      }
+    } else {
+      this.value = null;
+      this.key = null;
+      this.primaryKey = null;
+    }
+  }
+
+  continue() {
+    this.index++;
+    setTimeout(() => {
+      if (this.index < this.data.length) {
+        this._update();
+        this.request.result = this;
+      } else {
+        this.request.result = null;
+      }
+      if (this.request.onsuccess) {
+        this.request.onsuccess({ target: this.request });
       }
     }, 0);
   }
+
+  continuePrimaryKey() {}
+  advance() {}
 }
 
 class MockIDBIndex {
@@ -70,8 +175,77 @@ class MockIDBIndex {
     return new MockIDBRequest(found, undefined, this.objectStore.transaction);
   }
 
-  getAll(): MockIDBRequest {
-    return new MockIDBRequest(Array.from(this.objectStore.data.values()), undefined, this.objectStore.transaction);
+  getAll(query?: any): MockIDBRequest {
+    let allData = Array.from(this.objectStore.data.values());
+    
+    // Filter by query if provided
+    if (query !== undefined) {
+      allData = allData.filter(item => {
+        const indexValue = Array.isArray(this.keyPath) 
+          ? this.keyPath.map(path => item[path]).join('|')
+          : item[this.keyPath as string];
+        return indexValue === query;
+      });
+    }
+    
+    return new MockIDBRequest(allData, undefined, this.objectStore.transaction);
+  }
+
+  count(query?: any): MockIDBRequest {
+    let allData = Array.from(this.objectStore.data.values());
+    
+    // Filter by query if provided
+    if (query !== undefined) {
+      allData = allData.filter(item => {
+        const indexValue = Array.isArray(this.keyPath) 
+          ? this.keyPath.map(path => item[path]).join('|')
+          : item[this.keyPath as string];
+        return indexValue === query;
+      });
+    }
+    
+    return new MockIDBRequest(allData.length, undefined, this.objectStore.transaction);
+  }
+
+  openCursor(query?: any, direction?: string): MockIDBRequest {
+    let cursorData = Array.from(this.objectStore.data.values());
+    
+    // Sort by index key path
+    cursorData.sort((a, b) => {
+      const valA = Array.isArray(this.keyPath) ? this.keyPath.map(p => a[p]).join('|') : a[this.keyPath as string];
+      const valB = Array.isArray(this.keyPath) ? this.keyPath.map(p => b[p]).join('|') : b[this.keyPath as string];
+      if (valA < valB) return direction?.startsWith('prev') ? 1 : -1;
+      if (valA > valB) return direction?.startsWith('prev') ? -1 : 1;
+      return 0;
+    });
+
+    // Filter by query if provided
+    if (query !== undefined) {
+      if (query instanceof MockIDBKeyRange) {
+        cursorData = cursorData.filter(item => {
+          const indexValue = Array.isArray(this.keyPath) 
+            ? this.keyPath.map(path => item[path]).join('|')
+            : item[this.keyPath as string];
+          return query.contains(indexValue);
+        });
+      } else {
+        cursorData = cursorData.filter(item => {
+          const indexValue = Array.isArray(this.keyPath) 
+            ? this.keyPath.map(path => item[path]).join('|')
+            : item[this.keyPath as string];
+          return indexValue === query;
+        });
+      }
+    }
+    
+    if (cursorData.length === 0) {
+      return new MockIDBRequest(null, undefined, this.objectStore.transaction);
+    }
+
+    const cursor = new MockIDBCursor(null as any, cursorData, direction || 'next', this.keyPath, this);
+    const request = new MockIDBRequest(cursor, undefined, this.objectStore.transaction);
+    cursor.request = request;
+    return request;
   }
 }
 
@@ -169,9 +343,8 @@ class MockIDBObjectStore {
   }
 
   delete(key: any): MockIDBRequest {
-    const existed = this.data.has(key);
     this.data.delete(key);
-    return new MockIDBRequest(existed, undefined, this.transaction);
+    return new MockIDBRequest(undefined, undefined, this.transaction);
   }
 
   getAll(): MockIDBRequest {
@@ -183,8 +356,52 @@ class MockIDBObjectStore {
     return new MockIDBRequest(undefined, undefined, this.transaction);
   }
 
-  count(): MockIDBRequest {
-    return new MockIDBRequest(this.data.size, undefined, this.transaction);
+  count(query?: any): MockIDBRequest {
+    let count = this.data.size;
+    
+    // If query is provided, count only matching keys
+    if (query !== undefined) {
+      const allKeys = Array.from(this.data.keys());
+      count = allKeys.filter(key => {
+        if (query instanceof MockIDBKeyRange) {
+          return query.contains(key);
+        }
+        return key === query;
+      }).length;
+    }
+    
+    return new MockIDBRequest(count, undefined, this.transaction);
+  }
+
+  openCursor(query?: any, direction?: string): MockIDBRequest {
+    let cursorData = Array.from(this.data.values());
+    
+    // Sort by keyPath
+    cursorData.sort((a, b) => {
+      const valA = a[this.keyPath];
+      const valB = b[this.keyPath];
+      if (valA < valB) return direction?.startsWith('prev') ? 1 : -1;
+      if (valA > valB) return direction?.startsWith('prev') ? -1 : 1;
+      return 0;
+    });
+
+    // Filter by query if provided
+    if (query !== undefined) {
+      if (query instanceof MockIDBKeyRange) {
+        cursorData = cursorData.filter(item => query.contains(item[this.keyPath]));
+      } else {
+        cursorData = cursorData.filter(item => item[this.keyPath] === query);
+      }
+    }
+    
+    if (cursorData.length === 0) {
+      return new MockIDBRequest(null, undefined, this.transaction);
+    }
+
+    const cursor = new MockIDBCursor(null as any, cursorData, direction || 'next', this.keyPath, this);
+    const request = new MockIDBRequest(cursor, undefined, this.transaction);
+    cursor.request = request;
+    return request;
   }
 
   createIndex(name: string, keyPath: string | string[], options?: { unique?: boolean }): MockIDBIndex {
@@ -200,6 +417,14 @@ class MockIDBObjectStore {
       throw new Error(`Index '${name}' not found`);
     }
     return index;
+  }
+
+  deleteIndex(name: string): void {
+    this.indexes.delete(name);
+    const indexIndex = this.indexNames.indexOf(name);
+    if (indexIndex > -1) {
+      this.indexNames.splice(indexIndex, 1);
+    }
   }
 }
 
@@ -229,10 +454,13 @@ class MockIDBTransaction {
           store.setTransaction(this);
           this.stores.set(name, store);
         } else {
-          const newStore = new MockIDBObjectStore(name, { keyPath: 'id' }, dbKey);
+          const newStore = new MockIDBObjectStore(name, { keyPath: 'id' }, `${dbKey}_${name}`);
           newStore.setTransaction(this);
           this.stores.set(name, newStore);
           db.stores.set(name, newStore);
+          if (!db.objectStoreNames.contains(name)) {
+            db.objectStoreNames.push(name);
+          }
         }
       });
     }
@@ -305,7 +533,9 @@ class MockIDBDatabase {
     const dbKey = `${this.name}_v${this.version}_${name}`;
     const store = new MockIDBObjectStore(name, options, dbKey);
     this.stores.set(name, store);
-    this.objectStoreNames.push(name);
+    if (!this.objectStoreNames.contains(name)) {
+      this.objectStoreNames.push(name);
+    }
     return store;
   }
 
@@ -335,11 +565,11 @@ class MockIDBOpenDBRequest extends MockIDBRequest {
 
   constructor(name: string, version?: number) {
     const dbKey = `${name}_v${version || 1}`;
-    let db = mockFactory.databases.get(dbKey);
+    let db = mockFactory.databasesMap.get(dbKey);
     
     if (!db) {
       db = new MockIDBDatabase(name, version || 1);
-      mockFactory.databases.set(dbKey, db);
+      mockFactory.databasesMap.set(dbKey, db);
     }
     
     super(db);
@@ -368,7 +598,7 @@ class MockIDBOpenDBRequest extends MockIDBRequest {
 const globalDatabaseStorage = new Map<string, Map<string, any>>();
 
 class MockIDBFactory {
-  databases: Map<string, MockIDBDatabase> = new Map();
+  databasesMap: Map<string, MockIDBDatabase> = new Map();
 
   open(name: string, version?: number): MockIDBOpenDBRequest {
     const dbKey = `${name}_v${version || 1}`;
@@ -380,9 +610,14 @@ class MockIDBFactory {
 
   deleteDatabase(name: string): MockIDBRequest {
     // Limpiar todas las versiones de la base de datos
-    for (const [key] of this.databases) {
+    for (const [key] of this.databasesMap) {
       if (key.startsWith(`${name}_v`)) {
-        this.databases.delete(key);
+        this.databasesMap.delete(key);
+      }
+    }
+    // Deep clean global storage
+    for (const [key] of globalDatabaseStorage) {
+      if (key.startsWith(`${name}_v`)) {
         globalDatabaseStorage.delete(key);
       }
     }
@@ -391,7 +626,17 @@ class MockIDBFactory {
 
   getDatabases(): Promise<{ name: string; version: number }[]> {
     return Promise.resolve(
-      Array.from(this.databases.entries()).map(([key, db]) => ({
+      Array.from(this.databasesMap.entries()).map(([key, db]) => ({
+        name: db.name,
+        version: db.version
+      }))
+    );
+  }
+
+  // Method for getDatabaseNames and getDatabaseInfo
+  databases(): Promise<{ name?: string; version?: number }[]> {
+    return Promise.resolve(
+      Array.from(this.databasesMap.values()).map(db => ({
         name: db.name,
         version: db.version
       }))
@@ -452,6 +697,10 @@ beforeAll(() => {
   (globalThis as any).IDBTransaction = MockIDBTransaction;
   (globalThis as any).IDBDatabase = MockIDBDatabase;
   (globalThis as any).IDBOpenDBRequest = MockIDBOpenDBRequest;
+  (globalThis as any).IDBKeyRange = MockIDBKeyRange;
+  (globalThis as any).IDBIndex = MockIDBIndex;
+  (globalThis as any).IDBCursor = MockIDBCursor;
+  (globalThis as any).IDBCursorWithValue = MockIDBCursor;
 
   // Mock DOM APIs necesarias
   (globalThis as any).document = {
@@ -537,10 +786,6 @@ afterEach(async () => {
 
   // Limpia el almacenamiento de datos global.
   globalDatabaseStorage.clear();
-
-  // Limpia el registro de bases de datos en la factory.
-  // Esto asegura que el siguiente test empiece con una factory "virgen".
-  mockFactory.databases.clear();
 });
 
 // Utilidades para tests
@@ -573,6 +818,8 @@ export {
   MockIDBTransaction, 
   MockIDBDatabase, 
   MockIDBOpenDBRequest,
+  MockIDBKeyRange,
+  MockIDBIndex,
   MockEmitter,
   mockFactory
 };

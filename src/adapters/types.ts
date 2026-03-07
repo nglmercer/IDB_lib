@@ -39,6 +39,8 @@ export interface CursorOptions {
   direction?: 'next' | 'nextunique' | 'prev' | 'prevunique';
   limit?: number;
   offset?: number;
+  indexName?: string;
+  query?: any;
 }
 
 // Batch operation item
