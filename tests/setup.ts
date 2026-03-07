@@ -596,12 +596,20 @@ class MockIDBOpenDBRequest extends MockIDBRequest {
   constructor(name: string, version?: number) {
     const ns = getNamespace();
     const dbKey = `${ns}_${name}_v${version || 1}`;
-    let db = databasesMap.get(dbKey);
     
-    if (!db) {
-      db = new MockIDBDatabase(`${ns}_${name}_v${version || 1}`, version || 1);
-      databasesMap.set(dbKey, db);
+    // Always create a fresh database for each test to ensure clean state
+    // First, clear any existing data for this key
+    const storageKeyPrefix = `${dbKey}_`;
+    for (const key of Array.from(globalDatabaseStorage.keys())) {
+      if (key.startsWith(storageKeyPrefix)) {
+        globalDatabaseStorage.delete(key);
+      }
     }
+    databasesMap.delete(dbKey);
+    
+    // Create new database
+    const db = new MockIDBDatabase(`${ns}_${name}_v${version || 1}`, version || 1);
+    databasesMap.set(dbKey, db);
     
     super(db);
 
@@ -811,21 +819,25 @@ beforeAll(() => {
   };
 });
 
+// Reset global state before ALL tests
+beforeAll(() => {
+  // Reset globalTestId to ensure consistent namespace across test runs
+  globalTestId = 0;
+});
+
 // Limpiar después de cada test
 afterEach(async () => {
   // Small delay to ensure async operations complete
   await new Promise(resolve => setTimeout(resolve, 0));
   
-  const ns = getNamespace();
-  const prefix = `${ns}_`;
+  // Get all keys from both maps
+  const allDbKeys = Array.from(databasesMap.keys());
+  const allStorageKeys = Array.from(globalDatabaseStorage.keys());
   
-  // Clear databases from this session - be more aggressive
-  const keysToDelete = Array.from(databasesMap.keys()).filter(key => key.includes(`_${ns}_`) || key.startsWith(prefix));
-  keysToDelete.forEach(key => databasesMap.delete(key));
-  
-  // Clear data from this session - be more aggressive
-  const storageKeysToDelete = Array.from(globalDatabaseStorage.keys()).filter(key => key.includes(`_${ns}_`) || key.startsWith(prefix));
-  storageKeysToDelete.forEach(key => globalDatabaseStorage.delete(key));
+  // Clear ALL databases and storage - more aggressive cleanup
+  // This ensures no data leaks between tests
+  allDbKeys.forEach(key => databasesMap.delete(key));
+  allStorageKeys.forEach(key => globalDatabaseStorage.delete(key));
 });
 
 // Utilidades para tests
