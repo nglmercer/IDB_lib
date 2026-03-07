@@ -1,4 +1,17 @@
-import { beforeAll, afterAll, beforeEach, afterEach } from 'bun:test';
+import { beforeAll, afterAll, beforeEach, afterEach, describe, it, expect } from 'bun:test';
+let globalTestId = 0;
+
+beforeEach(() => {
+  // Each test gets a unique, guaranteed-different ID
+  globalTestId++;
+});
+
+function getNamespace(): string {
+  return `p${process.pid}_t${globalTestId}`;
+}
+
+const databasesMap = new Map<string, MockIDBDatabase>();
+const globalDatabaseStorage = new Map<string, Map<any, any>>();
 
 // Class for objectStoreNames that extends Array with contains method
 class ObjectStoreNamesArray extends Array<string> {
@@ -263,7 +276,7 @@ class MockIDBObjectStore {
     this.name = name;
     this.keyPath = options.keyPath || 'id';
     this.autoIncrement = options.autoIncrement || false;
-    this.dbKey = dbKey;
+    this.dbKey = dbKey; // Already includes isolation prefix from DB or Factory
     this.indexNames = new ObjectStoreNamesArray();
   }
 
@@ -447,7 +460,7 @@ class MockIDBTransaction {
     
     // Para transacciones de upgrade con '*', no pre-poblar stores
     if (!(storeNames.length === 1 && storeNames[0] === '*')) {
-      const dbKey = `${db.name}_v${db.version}`;
+      const dbKey = `${db.fullName}_v${db.version}`;
       storeNames.forEach(name => {
         if (db.stores.has(name)) {
           const store = db.stores.get(name)!;
@@ -517,7 +530,7 @@ class MockIDBTransaction {
 }
 
 class MockIDBDatabase {
-  name: string;
+  fullName: string;
   version: number;
   objectStoreNames: ObjectStoreNamesArray = new ObjectStoreNamesArray();
   stores: Map<string, MockIDBObjectStore> = new Map();
@@ -525,12 +538,29 @@ class MockIDBDatabase {
   onclose: ((event: any) => void) | null = null;
 
   constructor(name: string, version: number) {
-    this.name = name;
+    this.fullName = name;
     this.version = version;
   }
 
+  get name(): string {
+    // fullName format: {namespace}_{dbname}_v{version}
+    // e.g., p12345_t1_TestDB_v1
+    // We need to extract 'TestDB' from this format
+    const versionIndex = this.fullName.lastIndexOf('_v');
+    if (versionIndex > 0) {
+      // Find the position after the namespace (format: p{pid}_t{testId}_)
+      // The namespace always contains 't' followed by digits for testId
+      const namespaceEndMatch = this.fullName.match(/t\d+_/);
+      if (namespaceEndMatch) {
+        const namespaceEndIndex = this.fullName.indexOf(namespaceEndMatch[0]) + namespaceEndMatch[0].length;
+        return this.fullName.substring(namespaceEndIndex, versionIndex);
+      }
+    }
+    return this.fullName;
+  }
+
   createObjectStore(name: string, options?: { keyPath?: string; autoIncrement?: boolean }): MockIDBObjectStore {
-    const dbKey = `${this.name}_v${this.version}_${name}`;
+    const dbKey = `${this.fullName}_v${this.version}_${name}`;
     const store = new MockIDBObjectStore(name, options, dbKey);
     this.stores.set(name, store);
     if (!this.objectStoreNames.contains(name)) {
@@ -564,12 +594,13 @@ class MockIDBOpenDBRequest extends MockIDBRequest {
   onblocked: ((event: any) => void) | null = null;
 
   constructor(name: string, version?: number) {
-    const dbKey = `${name}_v${version || 1}`;
-    let db = mockFactory.databasesMap.get(dbKey);
+    const ns = getNamespace();
+    const dbKey = `${ns}_${name}_v${version || 1}`;
+    let db = databasesMap.get(dbKey);
     
     if (!db) {
-      db = new MockIDBDatabase(name, version || 1);
-      mockFactory.databasesMap.set(dbKey, db);
+      db = new MockIDBDatabase(`${ns}_${name}_v${version || 1}`, version || 1);
+      databasesMap.set(dbKey, db);
     }
     
     super(db);
@@ -595,13 +626,17 @@ class MockIDBOpenDBRequest extends MockIDBRequest {
   }
 }
 
-const globalDatabaseStorage = new Map<string, Map<string, any>>();
-
 class MockIDBFactory {
-  databasesMap: Map<string, MockIDBDatabase> = new Map();
+  get databasesMap() { return databasesMap; }
+
+  private _getNsDbKey(name: string, version?: number): string {
+    const ns = getNamespace();
+    return `${ns}_${name}_v${version || 1}`;
+  }
 
   open(name: string, version?: number): MockIDBOpenDBRequest {
-    const dbKey = `${name}_v${version || 1}`;
+    const ns = getNamespace();
+    const dbKey = `${ns}_${name}_v${version || 1}`;
     if (!globalDatabaseStorage.has(dbKey)) {
       globalDatabaseStorage.set(dbKey, new Map());
     }
@@ -609,37 +644,43 @@ class MockIDBFactory {
   }
 
   deleteDatabase(name: string): MockIDBRequest {
-    // Limpiar todas las versiones de la base de datos
-    for (const [key] of this.databasesMap) {
-      if (key.startsWith(`${name}_v`)) {
-        this.databasesMap.delete(key);
-      }
+    const ns = getNamespace();
+    const prefix = `${ns}_${name}_v`;
+    
+    // Clear databasesMap entries
+    for (const key of Array.from(databasesMap.keys())) {
+      if (key.startsWith(prefix)) databasesMap.delete(key);
     }
-    // Deep clean global storage
-    for (const [key] of globalDatabaseStorage) {
-      if (key.startsWith(`${name}_v`)) {
-        globalDatabaseStorage.delete(key);
-      }
+    // Clear globalDatabaseStorage entries
+    for (const key of Array.from(globalDatabaseStorage.keys())) {
+      if (key.startsWith(prefix)) globalDatabaseStorage.delete(key);
     }
     return new MockIDBRequest(undefined);
   }
 
   getDatabases(): Promise<{ name: string; version: number }[]> {
+    const ns = getNamespace();
+    const prefix = `${ns}_`;
     return Promise.resolve(
-      Array.from(this.databasesMap.entries()).map(([key, db]) => ({
-        name: db.name,
-        version: db.version
-      }))
+      Array.from(databasesMap.values())
+        .filter(db => db.fullName.startsWith(prefix))
+        .map(db => ({
+          name: db.name,
+          version: db.version
+        }))
     );
   }
 
-  // Method for getDatabaseNames and getDatabaseInfo
   databases(): Promise<{ name?: string; version?: number }[]> {
+    const ns = getNamespace();
+    const prefix = `${ns}_`;
     return Promise.resolve(
-      Array.from(this.databasesMap.values()).map(db => ({
-        name: db.name,
-        version: db.version
-      }))
+      Array.from(databasesMap.values())
+        .filter(db => db.fullName.startsWith(prefix))
+        .map(db => ({
+          name: db.name,
+          version: db.version
+        }))
     );
   }
 }
@@ -772,20 +813,19 @@ beforeAll(() => {
 
 // Limpiar después de cada test
 afterEach(async () => {
-  // Cierra todas las bases de datos abiertas para liberar bloqueos.
-  // Esto es importante para que deleteDatabase funcione correctamente.
-  const dbs = await mockFactory.getDatabases();
-  for (const dbInfo of dbs) {
-    // No hay un método "closeAll" en el mock, pero la eliminación es la forma más segura de limpiar.
-    await new Promise(resolve => {
-        const req = mockFactory.deleteDatabase(dbInfo.name);
-        req.onsuccess = resolve;
-        req.onerror = resolve; // Continuar incluso si hay un error
-    });
-  }
-
-  // Limpia el almacenamiento de datos global.
-  globalDatabaseStorage.clear();
+  // Small delay to ensure async operations complete
+  await new Promise(resolve => setTimeout(resolve, 0));
+  
+  const ns = getNamespace();
+  const prefix = `${ns}_`;
+  
+  // Clear databases from this session - be more aggressive
+  const keysToDelete = Array.from(databasesMap.keys()).filter(key => key.includes(`_${ns}_`) || key.startsWith(prefix));
+  keysToDelete.forEach(key => databasesMap.delete(key));
+  
+  // Clear data from this session - be more aggressive
+  const storageKeysToDelete = Array.from(globalDatabaseStorage.keys()).filter(key => key.includes(`_${ns}_`) || key.startsWith(prefix));
+  storageKeysToDelete.forEach(key => globalDatabaseStorage.delete(key));
 });
 
 // Utilidades para tests
